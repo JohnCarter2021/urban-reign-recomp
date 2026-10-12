@@ -2503,6 +2503,11 @@ lista de pendências.
     sincronizados com monitores de 60/120/240 Hz, e o problema em aberto do canal direito no vídeo de abertura
     (§94). Bibliotecas 100% (983/983), hardware 100%. Os links do guia avançado para o mapa conferidos.
 
+105. **Publicado no GitHub (2026-10-12).** Repositório público https://github.com/thiagordsfx/urban-reign-recomp,
+    branch `main`, primeiro commit com 748 arquivos (autor com o e-mail noreply do GitHub, configurado só neste
+    repositório). O link de download do README (`../../releases/latest`) passa a funcionar quando o primeiro release
+    for criado com o ZIP de `python build.py release`.
+
 ## Ferramentas
 
 Ver a tabela de variáveis de ambiente no README. As mais úteis até agora:
