@@ -1,0 +1,214 @@
+# Status map data (docs/status/map.*.svg and docs/status/details.*.md).
+# After editing, regenerate with:  python tools/status/generate.py
+#
+# States: "ok" (works), "parcial" (works with issues or unverified), "pendiente" (not working / not emulated).
+
+# ---------------------------------------------------------------------------------------------------------
+# Panel 1: Sony SDK 2.8 static libraries linked into SLUS_212.09.
+# Every function of docs/status/functions.csv between `desde` and `hasta` is a cell. A library starts at
+# `inicio` and runs to the next one. Order and versions come from the "PsIIlib*" signatures in the ELF;
+# starts come from identified SDK functions (src/urban/sdk_functions.inc) and the SIF RPC ids each
+# library binds (pad 0x80000100, mtap 0x80000901, sdr 0x80000701, cdvd 0x8000059x, mc 0x80000400).
+# Boundaries marked "approx." are within a few functions.
+# ---------------------------------------------------------------------------------------------------------
+[librerias]
+desde = 0x00314810
+hasta = 0x0034B52C
+
+[[librerias.grupo]]
+nombre = "libdma"
+inicio = 0x00314810
+estado = "ok"
+
+[[librerias.grupo]]
+nombre = "libgraph"
+inicio = 0x00314F00
+estado = "ok"
+nota = { es = "Incluye la descarga VRAM→EE por la FIFO del VIF1", en = "Includes the VRAM→EE download through the VIF1 FIFO", pt = "Inclui o download VRAM→EE pela FIFO do VIF1" }
+
+[[librerias.grupo]]
+nombre = "libpkt"
+inicio = 0x00316920
+estado = "ok"
+
+[[librerias.grupo]]
+nombre = "libpad"
+inicio = 0x00316C20
+estado = "ok"
+nota = { es = "PADMAN original del juego sobre el SIO2 emulado (inicio aprox.)", en = "The game's own PADMAN over the emulated SIO2 (start approx.)", pt = "PADMAN original do jogo sobre o SIO2 emulado (início aprox.)" }
+
+[[librerias.grupo]]
+nombre = "libmtap"
+inicio = 0x003180A0
+estado = "ok"
+nota = { es = "MTAPMAN original sobre el multitap emulado en el SIO2 (inicio aprox.)", en = "Original MTAPMAN over the multitap emulated on the SIO2 (start approx.)", pt = "MTAPMAN original sobre o multitap emulado no SIO2 (início aprox.)" }
+
+[[librerias.grupo]]
+nombre = "libsdr"
+inicio = 0x00318530
+estado = "ok"
+nota = { es = "SPU2 emulado con reverb; ADMA (música/voces CRI ADX) (inicio aprox.)", en = "Emulated SPU2 with reverb; ADMA (CRI ADX music/voices) (start approx.)", pt = "SPU2 emulado com reverb; ADMA (música/vozes CRI ADX) (início aprox.)" }
+
+[[librerias.grupo]]
+nombre = "libcdvd"
+inicio = 0x00318DA0
+estado = "ok"
+nota = { es = "Lee la ISO original", en = "Reads the original ISO", pt = "Lê a ISO original" }
+
+[[librerias.grupo]]
+nombre = "libscf"
+inicio = 0x0031AA60
+estado = "ok"
+
+[[librerias.grupo]]
+nombre = "libipu"
+inicio = 0x0031B190
+estado = "ok"
+nota = { es = "Código original sobre el IPU emulado: los vídeos Sofdec se reproducen", en = "Original code over the emulated IPU: Sofdec videos play", pt = "Código original sobre o IPU emulado: os vídeos Sofdec tocam" }
+
+[[librerias.grupo]]
+nombre = "libmpeg"
+inicio = 0x0031B6E0
+estado = "ok"
+nota = { es = "La libmpeg original del juego (usada por el M2V de CRI Sofdec) maneja el IPU emulado", en = "The game's own libmpeg (used by CRI Sofdec's M2V decoder) drives the emulated IPU", pt = "A libmpeg original do jogo (usada pelo M2V do CRI Sofdec) controla o IPU emulado" }
+
+[[librerias.grupo]]
+nombre = "libmc"
+inicio = 0x00322000
+estado = "ok"
+nota = { es = "MCMAN/MCSERV originales; Mcd001.ps2 compatible con PCSX2 (inicio aprox.)", en = "Original MCMAN/MCSERV; PCSX2-compatible Mcd001.ps2 (start approx.)", pt = "MCMAN/MCSERV originais; Mcd001.ps2 compatível com o PCSX2 (início aprox.)" }
+
+[[librerias.grupo]]
+nombre = "libpc"
+inicio = 0x00323E80
+estado = "ok"
+
+[[librerias.grupo]]
+nombre = "libkernl"
+inicio = 0x00324000
+estado = "ok"
+nota = { es = "Syscalls HLE; SIF RPC y módulos IRX reales en el IOP emulado", en = "HLE syscalls; SIF RPC and the real IRX modules on the emulated IOP", pt = "Syscalls HLE; SIF RPC e os módulos IRX reais no IOP emulado" }
+
+[[librerias.grupo]]
+nombre = "libc/libm (GCC)"
+inicio = 0x0033E800
+estado = "ok"
+
+# ---------------------------------------------------------------------------------------------------------
+# Panel 2: PS2 hardware. Each component is a rectangle of size `peso`.
+# ---------------------------------------------------------------------------------------------------------
+[[hardware.grupo]]
+nombre = "EE"
+
+  [[hardware.grupo.componente]]
+  corto = "R5900"
+  nombre = { es = "CPU R5900 (recompilada a C++, mapa de funciones con Ghidra)", en = "R5900 CPU (recompiled to C++, Ghidra function map)", pt = "CPU R5900 (recompilada para C++, mapa de funções com Ghidra)" }
+  estado = "ok"
+  peso = 5
+
+  [[hardware.grupo.componente]]
+  corto = "Kernel"
+  nombre = { es = "Kernel: hilos, semáforos, alarmas", en = "Kernel: threads, semaphores, alarms", pt = "Kernel: threads, semáforos, alarmes" }
+  estado = "ok"
+  peso = 3
+
+  [[hardware.grupo.componente]]
+  corto = "FPU/MMI"
+  nombre = { es = "FPU (COP1) e instrucciones MMI (permutaciones corregidas)", en = "FPU (COP1) and MMI instructions (permutations fixed)", pt = "FPU (COP1) e instruções MMI (permutações corrigidas)" }
+  estado = "ok"
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "VU0"
+  nombre = { es = "VU0: modo macro (COP2) y micro (VCALLMS, compilado AOT)", en = "VU0: macro (COP2) and micro (VCALLMS, compiled AOT) mode", pt = "VU0: modo macro (COP2) e micro (VCALLMS, compilado AOT)" }
+  estado = "ok"
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "INTC"
+  nombre = { es = "INTC con latch y W1C", en = "INTC with latch and W1C", pt = "INTC com latch e W1C" }
+  estado = "ok"
+  peso = 1
+
+  [[hardware.grupo.componente]]
+  corto = "DMAC"
+  nombre = { es = "Controlador DMA (incluye scratchpad en cadena e interleave)", en = "DMA controller (including scratchpad chain and interleave modes)", pt = "Controlador DMA (inclui scratchpad em chain e interleave)" }
+  estado = "ok"
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "Timers"
+  nombre = { es = "Temporizadores (T3 por H-BLANK)", en = "Timers (T3 driven by H-BLANK)", pt = "Temporizadores (T3 por H-BLANK)" }
+  estado = "ok"
+  peso = 1
+
+[[hardware.grupo]]
+nombre = "GS / VU1"
+
+  [[hardware.grupo.componente]]
+  corto = "GS"
+  nombre = { es = "GS: renderizador por hardware de PCSX2 (DX11) en su propio hilo; el GS propio en OpenGL queda como opción", en = "GS: PCSX2's hardware renderer (DX11) on its own thread; the port's own OpenGL GS stays as an option", pt = "GS: renderizador de hardware do PCSX2 (DX11) numa thread própria; o GS próprio em OpenGL fica como opção" }
+  estado = "ok"
+  nota = { en = "1x-8x internal resolution, PCSX2's filters, HD textures; frames locked to 60/120/240 Hz monitors", pt = "Resolução interna 1x-8x, filtros do PCSX2, texturas HD; quadros sincronizados com monitores de 60/120/240 Hz" }
+  peso = 5
+
+  [[hardware.grupo.componente]]
+  corto = "VU1"
+  nombre = { es = "VU1: microprogramas (skinning, escena), compilados AOT", en = "VU1: microprograms (skinning, scene), compiled AOT", pt = "VU1: microprogramas (skinning, cena), compilados AOT" }
+  estado = "ok"
+  nota = { es = "En su propio hilo (MTVU); lucha de 8 a 60 FPS", en = "On its own thread (MTVU); 8-fighter brawl at 60 FPS", pt = "Numa thread própria (MTVU); luta de 8 a 60 FPS" }
+  peso = 3
+
+  [[hardware.grupo.componente]]
+  corto = "VIF"
+  nombre = { es = "VIF0/VIF1 (UNPACK, MPG, DIRECT)", en = "VIF0/VIF1 (UNPACK, MPG, DIRECT)", pt = "VIF0/VIF1 (UNPACK, MPG, DIRECT)" }
+  estado = "ok"
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "GIF"
+  nombre = { es = "GIF: PATH1/2/3", en = "GIF: PATH1/2/3", pt = "GIF: PATH1/2/3" }
+  estado = "ok"
+  peso = 1
+
+  [[hardware.grupo.componente]]
+  corto = "IPU"
+  nombre = { es = "IPU (decodificador MPEG), emulación tomada de la recompilación de Ace Combat 5", en = "IPU (MPEG decoder), emulation taken from the Ace Combat 5 recompilation", pt = "IPU (decodificador MPEG), emulação vinda da recompilação do Ace Combat 5" }
+  estado = "ok"
+  peso = 2
+
+[[hardware.grupo]]
+nombre = "IOP"
+
+  [[hardware.grupo.componente]]
+  corto = "R3000"
+  nombre = { es = "IOP R3000A interpretado con los IRX originales", en = "Interpreted R3000A IOP running the original IRX modules", pt = "IOP R3000A interpretado com os IRX originais" }
+  estado = "ok"
+  peso = 3
+
+  [[hardware.grupo.componente]]
+  corto = "CDVD"
+  nombre = { es = "CD/DVD desde la ISO", en = "CD/DVD from the ISO", pt = "CD/DVD a partir da ISO" }
+  estado = "ok"
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "SPU2"
+  nombre = { es = "SPU2: voces, ADMA, reverb", en = "SPU2: voices, ADMA, reverb", pt = "SPU2: vozes, ADMA, reverb" }
+  estado = "ok"
+  nota = { en = "Rate control and time-stretch; open: in some runs the opening video's right channel plays 171 ms early", pt = "Controle de taxa e time-stretch; em aberto: em parte das execuções o canal direito do vídeo de abertura sai 171 ms adiantado" }
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "SIO2"
+  nombre = { en = "SIO2: controller (DualShock 2) and memory card", pt = "SIO2: controle (DualShock 2) e memory card" }
+  estado = "ok"
+  nota = { en = "PC controllers through SDL3 with vibration, PCSX2-style controls.ini", pt = "Controles do PC pelo SDL3 com vibração, controls.ini no formato do PCSX2" }
+  peso = 2
+
+  [[hardware.grupo.componente]]
+  corto = "Multitap"
+  nombre = { es = "Multitap (4-8 jugadores)", en = "Multitap (4-8 players)", pt = "Multitap (4-8 jogadores)" }
+  estado = "ok"
+  nota = { en = "Port 2 by default (controls.ini [Pad] MultitapPort2)", pt = "Porta 2 por padrão (controls.ini [Pad] MultitapPort2)" }
+  peso = 1

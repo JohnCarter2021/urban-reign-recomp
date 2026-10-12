@@ -1,0 +1,23 @@
+# Your disc image and HD texture pack stay out of the repository (only the README of each folder is tracked).
+/game/*
+!/game/README.md
+/textures/*
+!/textures/README.md
+# Build output, recompiled game code, benchmark savestates and runs (game data: never in the repository).
+/build/
+/generated/
+/bench/
+/tools/ps2_recomp.exe
+*.log
+__pycache__/
+*.pyc
+.vs/
+imgui.ini
+# Local tools that are not part of the repository.
+/launcher/
+/tools/launcher_preview.py
+# PS Vita GPU modules from upstream PS2Recomp (Sony/PowerVR binaries): this port is Windows only.
+/runtime/ps2xRuntime/vita/module/*.suprx
+# Local backups of the READMEs (2026-10-12), not published.
+/README.backup.md
+/README.pt-BR.backup.md

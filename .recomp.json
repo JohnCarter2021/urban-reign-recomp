@@ -1,0 +1,21 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Urban Reign",
+  "system": "PS2",
+  "type": "recomp",
+  "original": {
+    "region": "USA",
+    "serial": "SLUS-21209"
+  },
+  "project": "Urban Reign — PS2 Static Recompilation",
+  "status": "playable",
+  "targets": ["Windows"],
+  "toolchain": "Ps2recomp",
+  "approach": "Static recompilation of MIPS R5900 code to C++20 with a PS2Recomp-based runtime (emulated IOP running the game's original IRX modules, VU0/VU1 microcode compiled ahead of time, IPU emulation) and PCSX2's hardware GS renderer (DX11) for drawing.",
+  "maintainers": [
+    {
+      "name": "thiagordsfx"
+    }
+  ],
+  "notes": "Playable: menus, memory card saves, fights, story mode, FMVs, music and voices. Runs at 60 FPS in progressive scan, 8-fighter brawls included, at 1x to 8x internal resolution with PCSX2's filters and HD texture packs. Requires your own copy of the game."
+}
