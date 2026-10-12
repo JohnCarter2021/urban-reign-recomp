@@ -34,6 +34,13 @@ resolutions, texture filters and HD texture packs.
 - Xbox, PlayStation and other controllers, with vibration; multitap for up to 8 players
 - Memory card and save states (F5 / F9)
 
+## Status
+
+<a href="docs/status/details.en.md"><img src="docs/status/map.en.svg" alt="Port status map: Sony SDK library functions and PS2 hardware components, colored by status" width="100%"></a>
+
+Every Sony SDK library the game links and every PS2 hardware component it uses, by status. Click the map for the
+details.
+
 ## Download and play
 
 1. Download the ZIP from the [**latest release**](../../releases/latest) and extract it anywhere.

@@ -34,6 +34,13 @@ usar resolução interna alta, filtros de textura e pacotes de texturas HD.
 - Controles de Xbox, PlayStation e outros, com vibração; multitap para até 8 jogadores
 - Memory card e save states (F5 / F9)
 
+## Status
+
+<a href="docs/status/details.pt-BR.md"><img src="docs/status/map.pt-BR.svg" alt="Mapa de status do port: funções das bibliotecas do SDK da Sony e componentes de hardware do PS2, coloridos por status" width="100%"></a>
+
+Cada biblioteca do SDK da Sony que o jogo usa e cada componente de hardware do PS2, por status. Clique no mapa para
+ver os detalhes.
+
 ## Baixar e jogar
 
 1. Baixe o ZIP da [**versão mais recente**](../../releases/latest) e extraia em qualquer pasta.
