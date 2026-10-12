@@ -2505,8 +2505,10 @@ lista de pendências.
 
 105. **Publicado no GitHub (2026-10-12).** Repositório público https://github.com/thiagordsfx/urban-reign-recomp,
     branch `main`, primeiro commit com 748 arquivos (autor com o e-mail noreply do GitHub, configurado só neste
-    repositório). O link de download do README (`../../releases/latest`) passa a funcionar quando o primeiro release
-    for criado com o ZIP de `python build.py release`.
+    repositório). Release v1.0.0 publicado com `UrbanReignPC-1.0.0.zip` (48,3 MB, SHA-256 `ed3cfecd...1582e8`) e as
+    notas em `docs/releases/v1.0.0.md`; o link de download do README (`../../releases/latest`) aponta para ele. A
+    pedido do usuário, commits, releases e PRs não levam link de sessão nem rodapé do Claude; as mensagens dos
+    primeiros commits foram reescritas sem essas linhas (mesmos arquivos) e reenviadas.
 
 ## Ferramentas
 
