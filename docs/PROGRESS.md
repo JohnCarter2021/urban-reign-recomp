@@ -2678,6 +2678,12 @@ lista de pendências.
       R3 desliga (antes R2+L3 / R2+R3), só no Free Mode (os outros modos já têm essa câmera).
     - Testado pelo usuário no jogo; antes, um programa com host falso (RAM de 32 MB) conferiu as escritas e a aba.
 
+115. **Release v1.1.0 (2026-10-13).** Depois do merge do PR #1 (squash, `9bdf982`): `urban.exe` e os mods
+    recompilados do `main`, versão 1.1.0 no `tools/release.py` e no launcher, CoopTool 1.1.0. `UrbanReignPC-1.1.0.zip`
+    (46,3 MB, SHA-256 `f4d65ba2...cff0e2`): launcher, `game/` com CoopTool e ExampleMod (desligados), sem nada de
+    usuário. Conferido extraindo o ZIP numa pasta limpa: o jogo abre, roda a abertura e o CoopTool carrega (aba
+    própria e código por quadro). Notas em `docs/releases/v1.1.0.md`.
+
 ## Ferramentas
 
 Ver a tabela de variáveis de ambiente no README. As mais úteis até agora:
