@@ -467,10 +467,12 @@ namespace ps2_host_input
             }
         }
 
-        std::vector<ScriptStep> loadScript()
+        // PS2X_PAD_SCRIPT for player 1, PS2X_PAD_SCRIPT<n> for player n (2..8).
+        std::vector<ScriptStep> loadScript(uint32_t player = 0u)
         {
             std::vector<ScriptStep> script;
-            const char *value = std::getenv("PS2X_PAD_SCRIPT");
+            const std::string variable = player == 0u ? "PS2X_PAD_SCRIPT" : "PS2X_PAD_SCRIPT" + std::to_string(player + 1u);
+            const char *value = std::getenv(variable.c_str());
             if (!value || !*value)
                 return script;
             for (std::string_view entry : split(value, ','))
@@ -480,7 +482,7 @@ namespace ps2_host_input
                 else
                     std::cerr << "[input] ignoring pad script step '" << entry << "'" << std::endl;
             }
-            std::cerr << "[input] pad script: " << script.size() << " step(s) on port 0" << std::endl;
+            std::cerr << "[input] pad script: " << script.size() << " step(s) for player " << (player + 1u) << std::endl;
             return script;
         }
 
@@ -555,6 +557,27 @@ namespace ps2_host_input
             }
         }
 
+        void applyScript(const std::vector<ScriptStep> &script, double now, uint64_t vsyncTick, ScriptedInput &input)
+        {
+            for (const ScriptStep &step : script)
+            {
+                const double clock = step.fields ? static_cast<double>(vsyncTick) : now;
+                if (clock >= step.start && clock < step.end)
+                {
+                    input.buttons |= step.buttons;
+                    for (size_t i = 0; i < input.axes.size(); ++i)
+                    {
+                        if (step.axes[i] != 0x80u)
+                        {
+                            input.axes[i] = step.axes[i];
+                            input.active = true;
+                        }
+                    }
+                }
+            }
+            input.active = input.active || input.buttons != 0u;
+        }
+
         ScriptedInput scriptedInput(uint64_t vsyncTick)
         {
             static const std::vector<ScriptStep> script = loadScript();
@@ -579,24 +602,24 @@ namespace ps2_host_input
                 input.active = input.buttons != 0u;
                 return input;
             }
-            const double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count();
-            for (const ScriptStep &step : script)
+            applyScript(script, std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count(), vsyncTick, input);
+            return input;
+        }
+
+        // Players 2..8's own scripts (tests), on the same clock as player 1's.
+        ScriptedInput playerScriptedInput(uint32_t player, uint64_t vsyncTick)
+        {
+            static const std::array<std::vector<ScriptStep>, kMaxPlayers> scripts = []
             {
-                const double clock = step.fields ? static_cast<double>(vsyncTick) : now;
-                if (clock >= step.start && clock < step.end)
-                {
-                    input.buttons |= step.buttons;
-                    for (size_t i = 0; i < input.axes.size(); ++i)
-                    {
-                        if (step.axes[i] != 0x80u)
-                        {
-                            input.axes[i] = step.axes[i];
-                            input.active = true;
-                        }
-                    }
-                }
-            }
-            input.active = input.active || input.buttons != 0u;
+                std::array<std::vector<ScriptStep>, kMaxPlayers> loaded;
+                for (uint32_t p = 1u; p < kMaxPlayers; ++p)
+                    loaded[p] = loadScript(p);
+                return loaded;
+            }();
+            static const auto origin = std::chrono::steady_clock::now();
+            ScriptedInput input;
+            if (player < kMaxPlayers && !scripts[player].empty())
+                applyScript(scripts[player], std::chrono::duration<double>(std::chrono::steady_clock::now() - origin).count(), vsyncTick, input);
             return input;
         }
 
@@ -622,8 +645,9 @@ namespace ps2_host_input
             return ports;
         }
 
-        // The player behind (port, slot), in PCSX2's order: 1A, 2A, then 1B-1D and 2B-2D for the ports with a multitap
-        // (the slots of a port without one are skipped, so the third controller is 2B when only port 2 has a multitap).
+        // The player behind (port, slot): 1A, 2A, then 2B-2D and 1B-1D for the ports with a multitap (the slots of a port
+        // without one are skipped). PCSX2 puts port 1's slots first; here port 2's come first, the ones the game uses for
+        // P3/P4, so port 1's multitap only adds players 6-8 (P5-P8 as humans with CoopTool) after the same first five.
         int playerFor(uint32_t port, uint32_t slot)
         {
             if (port >= kPadPorts || slot >= 4u)
@@ -634,7 +658,7 @@ namespace ps2_host_input
             if ((taps & (1u << port)) == 0u)
                 return -1;
             int player = 2 + static_cast<int>(slot) - 1;
-            if (port == 1u && (taps & 1u) != 0u)
+            if (port == 0u && (taps & 2u) != 0u)
                 player += 3;
             return player;
         }
@@ -1112,10 +1136,10 @@ namespace ps2_host_input
             std::lock_guard<std::mutex> lock(g_mutex);
             state = g_state[static_cast<size_t>(player)];
         }
-        if (player == 0)
         {
             const std::atomic<uint64_t> *counter = g_fieldCounter.load();
-            const ScriptedInput scripted = scriptedInput(counter ? counter->load() : 0u);
+            const uint64_t tick = counter ? counter->load() : 0u;
+            const ScriptedInput scripted = player == 0 ? scriptedInput(tick) : playerScriptedInput(static_cast<uint32_t>(player), tick);
             if (scripted.active)
             {
                 state.connected = true;

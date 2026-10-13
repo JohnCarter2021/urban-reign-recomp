@@ -26,6 +26,7 @@
 | `PS2X_GS_SIGNAL_LOG=1` | (runtime) SIGNAL/FINISH do GS, fila e interrupções |
 | `URBAN_DUMP_RAM=f` / `URBAN_DUMP_VRAM=f` | junto do hang dump, salva a RAM (32 MB) / VRAM do GS (4 MB) |
 | `PS2X_PAD_SCRIPT=t:botões[:dur],...` | (runtime) input scriptado na porta 1, ex. `12:start:0.3,40:right+cross`; tempos em s a partir da 1ª leitura do pad (`tv` = fields) |
+| `PS2X_PAD_SCRIPT<n>=...` | (runtime) o mesmo para o controle n (2..8), ex. `PS2X_PAD_SCRIPT5=30:lleft:5` |
 | `PS2X_SIO2_RECV1=0/1/2` | (runtime) RECV1 de transferências SIO2 com vários comandos; o `urban.exe` usa 2 (conectado se algum respondeu), sem isso o PADMAN não aceita o controle |
 | `PS2X_IOP_VBLANK_HANDLERS=0` | (runtime) desliga a chamada dos handlers do `RegisterVblankHandler` no IOP |
 | `PS2X_GS_DOWNLOAD_LOG=1` | (runtime) loga cada download GS → EE (TRXDIR=1) |
@@ -69,7 +70,7 @@
 | `PS2X_ADMA_HOLD=0` | (runtime) com o bloco de ADMA atrasado, toca silêncio em vez de repetir a última amostra (§92: estalos nos vídeos) |
 | `PS2X_ADMA_COPY=ahead/all/0` | (runtime) quando os blocos de ADMA são lidos da RAM do IOP: `ahead` (padrão) um bloco à frente, como o hardware; `all` a transferência inteira no início; `0` na hora de tocar (§94) |
 | `PS2X_ADMA_DUMP=<arquivo>` | (runtime) grava cada bloco de ADMA tocado (cabeçalho de 4 bytes `A`, core, 0, 0 + 256 pares esquerdo/direito s16le) |
-| `PS2X_MULTITAP=0/1/2/12` | (runtime; `controls.ini` `[Pad] MultitapPort1/2`, padrão porta 2) multitap na porta 1, 2 ou nas duas: até 8 controles, na ordem do PCSX2 (1A, 2A, 1B-1D, 2B-2D) |
+| `PS2X_MULTITAP=0/1/2/12` | (runtime; `controls.ini` `[Pad] MultitapPort1/2`, padrão porta 2) multitap na porta 1, 2 ou nas duas: até 8 controles, na ordem 1A, 2A, 2B-2D, 1B-1D (a porta 2 antes da 1, a que o jogo usa para o P3/P4; o PCSX2 põe a porta 1 antes) |
 | `PS2X_SDL_INPUT=0` | (runtime; `controls.ini` `[InputSources] SDL = false`) controles pelo GLFW como antes (sem vibração; `SDL-<n>` vira o gamepad n do GLFW). Padrão: SDL3 (§95) |
 | `PS2X_PAD<n>=1`, `PS2X_PAD<n>_<TECLA>=<ligação>;<ligação>` | (runtime; escritas pelo `urban.exe` a partir do `[Pad<n>]` do `controls.ini`, formato do PCSX2) ligações de cada botão/direção do jogador n; sem `PS2X_PAD<n>` vale o padrão (teclado + `SDL-0` no jogador 1, `SDL-<n-1>` nos outros) |
 | `PS2X_LOG_VIBRATION=1` | (testes) mostra no console cada mudança dos motores que o jogo manda para cada jogador |

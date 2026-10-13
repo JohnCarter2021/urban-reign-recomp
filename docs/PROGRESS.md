@@ -2724,6 +2724,38 @@ lista de pendências.
     próprios usam os deles; DDS comprimidos sem mips ficam como antes. `PS2X_PCSX2_HD_MIPMAPS=0` desliga. Conferido:
     luta no ferro-velho com HD normal, 60 FPS; o usuário confirmou o tatame sem as listras. Release v1.2.0 (com o §117).
 
+119. **CoopTool com 8 humanos, golpes e modelo dos extras (2026-10-13).**
+    - **Golpes do P5-P8.** O carregamento da luta (`sub_002A13D8`) carrega no máximo 4 conjuntos de golpes (4 vagas de
+      0x1C bytes em 0xAC0578, buffers de 516 KB), para os lutadores marcados (`B+0x9470` = 1), na ordem P1..P8: um por
+      personagem com golpes próprios (registro em 0x61DD50 + id × 0xA0, `+0x5E` = 0) e um por grupo de capangas que
+      dividem os golpes (`+0x5E` = grupo, 10 grupos). O modo história cabe 5+ inimigos assim. O versus só marca o
+      P1-P4, e só roda `sub_0027C950` (a tabela de golpes do lutador: golpes, bancos de movimento em `+0x8D86..8A`,
+      registro em `+0x88E0`) para eles. O CoopTool agora marca os extras; o `urban.exe` substitui `sub_002A13D8`:
+      tira os personagens repetidos do carregamento (um conjunto carregado serve a todos do personagem, mas o jogo
+      daria outra vaga ao repetido) e roda `sub_0027C950` para o P5-P8 cujo conjunto cabe. Quem não cabe fica com os
+      golpes do Brad (tabela zerada): uma tabela de um conjunto que não carregou deixa o lutador sem golpes.
+    - **Modelo do P7/P8.** A luta tem 6 modelos: `sub_00238588` dá ao lutador i o slot i < 6 ? i : 1, então o P7 **e**
+      o P8 desenham com o modelo do P2 (`B+8`, ponteiro em `B+0x9740` por `sub_00235018`), e o último a carregar
+      substitui o do P2 (o Coop Tool antigo dizia P7 = P2, P8 = P3; com P8 = Napalm o P2 Golem virava Napalm). O
+      CoopTool dá aos dois o personagem do P2, lido da escolha da seleção (0x94A638), que já vale antes do
+      carregamento (o `B+4` do P2 só muda durante ele, depois dos golpes dos extras).
+    - **Controles 5-8.** O jogo lê os 8 pads (0x3597C0, 0xD0 bytes cada, índice slot × 2 + porta), mas só abre o
+      multitap da porta 2 (`sceMtapPortOpen(1)` em `sub_0012B9E0`); com a porta 1 no `controls.ini` o `urban.exe`
+      abre ela também (`sub_00318308`). Humano/CPU: ao começar a luta `sub_0022BB78` copia, para cada lutador com
+      `kP1-0xB0` = 1, `-0x44` (1 = CPU) para `-0x46` e, para humano, o número do controle de `-0x40` para `-0x484`,
+      e `sub_00209618` dá o pad (`-0x488`) pelas tabelas de 4 entradas em 0x461148 (com multitap) / 0x461158 (sem).
+      O botão por quadro usa `sub_0021CB48` (layout do menu Options, 0x946610 + número × 4). Números 4..7 passam das
+      duas tabelas (o 7 lê o layout 11): o `urban.exe` substitui as duas funções para 4..7 (o pad 5..8 do PC, o
+      layout do controle 1). A ordem dos controles do PC passou a ser 1A, 2A, 2B-2D, 1B-1D (a porta 2 primeiro; o
+      PCSX2 põe a porta 1 antes): os números 0..3 continuam na tabela do jogo, e o multitap da porta 1 só acrescenta
+      os controles 6-8. Mandar o P3/P4 para 1B/1C deixava a seleção esperando. O launcher mostra a mesma ordem.
+    - **CoopTool:** 1 a 8 humanos; o P5-P8 humano tem `-0x44` = 0 e `-0x40` = número do controle antes da luta,
+      personagem (P5/P6) e marca de golpes; aviso quando faltam controles (`PS2X_MULTITAP`). A aba mostra "X de 4
+      conjuntos de golpes" e quem ficou sem.
+    - **Teste:** `PS2X_PAD_SCRIPT<n>` (novo) manda input para o controle n. Save de seleção com 4 humanos, CoopTool
+      com 8, as duas portas: os 8 andam para baixo juntos, ninguém age como bot, 59-60 FPS. Golpes: P5/P6 Golem pegam
+      a tabela do P2 (abraço de urso); P4 Brad forçado + P5 Lilian dão a 4ª vaga à Lilian. Release v1.3.0.
+
 ## Ferramentas
 
 Ver a tabela de variáveis de ambiente no README. As mais úteis até agora:

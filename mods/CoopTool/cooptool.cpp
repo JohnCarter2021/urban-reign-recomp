@@ -1,4 +1,4 @@
-// CoopTool: multiplayer with up to 8 fighters (up to 4 humans + bots), every one for himself or custom teams, and
+// CoopTool: multiplayer with up to 8 fighters (humans and bots), every one for himself or custom teams, and
 // Free Mode missions with up to 4 humans.
 // The memory map comes from thiagordsfx's Urban Reign Coop Tool (pnach generator): every fighter has a 0x9750-byte
 // block; the fields below are offsets from its current health (P1 at 0x5A5FC8). The settings are written at every
@@ -21,16 +21,31 @@ namespace
     constexpr uint32_t kP1 = 0x005A5FC8u;
     constexpr uint32_t kStride = 0x9750u;
     constexpr int kTeam = -0xB2;        // 16 bits: 0..3 = teams A..D, 4 = no team
-    constexpr int kAi1 = -0xB0;         // 16 bits: 1 = AI, 0 = controller
-    constexpr int kAi2 = -0x44;
+    constexpr int kAi1 = -0xB0;         // 16 bits: 1 = set up when the fight starts (sub_0022BB78), human or CPU
+    constexpr int kAi2 = -0x44;         // 16 bits: 1 = CPU, 0 = controller (copied to kCpu when the fight starts)
+    constexpr int kCpu = -0x46;         // 16 bits: 1 = CPU, 0 = controller (in the fight)
+    constexpr int kPadSetting = -0x40;  // 16 bits: controller number (copied to kController when the fight starts)
+    constexpr int kController = -0x484; // 32 bits: controller number, 0..7 (urban.exe gives 4..7 the host's pads 5..8)
     constexpr int kAiProfile = -0x34;   // 32 bits
     constexpr int kOn = -0x544;         // 16 bits, P5..P8: 1 = in the fight
+    constexpr int kLoadMoves = 0x648;   // 32 bits: 1 = the fight's load loads this fighter's moves (sub_002A13D8)
     constexpr int kSkin = -0x8E24;      // 32 bits: character (looks; moves for P1..P4)
     constexpr int kHp = 0x00, kHpMax = 0x02, kSpa = 0x2A;
     constexpr int kLimbs[] = {0x04, 0x06, 0x08};                    // head, torso, legs (health of each)
     constexpr int kStats[] = {0x50, 0x52, 0x54, 0x56, 0x58, 0x5A}; // STK GRP RGA SPA WPA TGH
     constexpr int kEndurance[] = {0x0A, 0x0C, 0x0E};                // HDE UBE LBE (balance at +6)
     constexpr uint32_t kMovesTable = 0x0094A634u;                   // P1..P4 pick on the select screen (32 bits each)
+    // The moves. A fight loads at most 4 move sets (sub_002A13D8: 4 slots of 0x1C bytes, a 516 KB buffer each), for
+    // the fighters with kLoadMoves set, in order P1..P8. A character has its own set (+0x5E = 0 in its record) or
+    // shares one with its group (+0x5E = group): story missions fit their enemies in 4 that way. A loaded set serves
+    // every fighter of that character; urban.exe leaves repeats out of the load and sets up P5..P8's move tables
+    // (sub_0027C950, which a versus fight only runs for P1..P4). A fighter whose set did not fit has Brad's moves.
+    constexpr uint32_t kCharacterRecords = 0x0061DD50u;             // 0xA0 bytes per character id
+    constexpr uint32_t kCharacterRecordSize = 0xA0u;
+    constexpr uint32_t kMovesGroup = 0x5Eu;                         // 16 bits: 0 = own set, else the shared group
+    constexpr uint32_t kMoveSlots = 0x00AC0578u;                    // +4: 1 = group, +8: id / group - 1, +0x10: used
+    constexpr uint32_t kMoveSlotSize = 0x1Cu;
+    constexpr int kMoveSlotCount = 4;
     constexpr uint32_t kSameFighter = 0x00ABFA7Cu;                  // 8 bits: 1 = a fighter can be picked twice
     constexpr uint32_t kRegionalKo = 0x00ABF670u;                   // 16 bits: 0 = off (avoids bugs with 5+)
     constexpr uint32_t kTeamAttackKo = 0x00ABF674u;                 // 16 bits: 0 = off
@@ -226,9 +241,9 @@ namespace
     struct Config
     {
         bool on = false;
-        int humans = 2;          // 1..4
+        int humans = 2;          // 1..8 (P5..P8: controllers 5..8, which take both multitaps)
         int mode = 0;            // 0 = every one for himself, 1 = custom teams
-        std::array<Fighter, 4> human{};
+        std::array<Fighter, 8> human{};
         std::vector<Fighter> bots{Fighter{}, Fighter{}};
         bool forceP4Brad = false;
         bool sameFighter = false;
@@ -297,7 +312,7 @@ namespace
         g_host->set_setting("on", config.on ? "1" : "0");
         g_host->set_setting("humans", std::to_string(config.humans).c_str());
         g_host->set_setting("mode", std::to_string(config.mode).c_str());
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 8; ++i)
         {
             std::snprintf(key, sizeof(key), "human%d", i + 1);
             g_host->set_setting(key, fighterText(config.human[static_cast<size_t>(i)]).c_str());
@@ -330,10 +345,10 @@ namespace
     {
         Config config;
         config.on = settingInt("on", 0) != 0;
-        config.humans = std::clamp(settingInt("humans", config.humans), 1, 4);
+        config.humans = std::clamp(settingInt("humans", config.humans), 1, 8);
         config.mode = std::clamp(settingInt("mode", config.mode), 0, 1);
         char key[32];
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 8; ++i)
         {
             Fighter &f = config.human[static_cast<size_t>(i)];
             f.team = i % 2;
@@ -448,8 +463,26 @@ namespace
     // the scene: black scene, the camera flies off looking for it. So during a fight only the extras that were on
     // before it are set; one switched on mid-fight joins the next fight. COOPTOOL_LIVE=1 sets them at any time.
     std::array<bool, 9> g_extraOn{};
+    std::array<bool, 9> g_extraMoves{}; // kLoadMoves set by CoopTool (cleared again when the extra goes)
 
-    void resetExtra(int player) { g_extraOn[static_cast<size_t>(player)] = false; }
+    void resetExtra(int player)
+    {
+        g_extraOn[static_cast<size_t>(player)] = false;
+        // Only what CoopTool set, and only in Multiplayer: in story the game sets it for the enemies itself.
+        if (g_extraMoves[static_cast<size_t>(player)])
+        {
+            if (multiplayer())
+                write32(field(player, kLoadMoves), 0);
+            g_extraMoves[static_cast<size_t>(player)] = false;
+        }
+    }
+
+    // P2's character: its select-screen pick, or the fighter's own once in the fight (a pick out of range: random).
+    uint32_t p2Character()
+    {
+        const uint32_t pick = read32(kMovesTable + 4u);
+        return pick < 0x48u ? pick : read32(field(2, kSkin));
+    }
 
     bool armExtra(int player)
     {
@@ -459,6 +492,35 @@ namespace
             return false;
         write16(field(player, kOn), 1);
         was = true;
+        return true;
+    }
+
+    // An extra fighter (P5..P8), human or bot, set up before the fight loads (the fight's start reads all of it).
+    bool setUpExtra(int player, const Fighter &f, bool human, int mode)
+    {
+        if (!armExtra(player))
+            return false;
+        write16(field(player, kAi1), 1);
+        if (human)
+        {
+            // Controller N for PN: the fight's start copies these to kCpu and kController and finds that pad.
+            write16(field(player, kAi2), 0);
+            write16(field(player, kPadSetting), static_cast<uint16_t>(player - 1));
+        }
+        else
+        {
+            const uint32_t ai = kAis[f.ai].value;
+            write16(field(player, kAi2), 1);
+            write32(field(player, kAiProfile), ai ? ai : kBotAi);
+        }
+        write16(field(player, kTeam), static_cast<uint16_t>(mode == 1 ? f.team : 4));
+        // The fight has 6 models: P7 and P8 both draw with P2's (sub_00238588), and the last of them to load replaces
+        // it. They take P2's character, whatever was picked: its pick on the select screen, set before the fight
+        // loads (P2's kSkin only takes it during the load, after the extras' moves are set).
+        write32(field(player, kSkin), player >= 7 ? p2Character() : static_cast<uint32_t>(f.character));
+        // As the story missions do for their enemies: the load then takes this fighter's moves too (up to 4 sets).
+        write32(field(player, kLoadMoves), 1);
+        g_extraMoves[static_cast<size_t>(player)] = true;
         return true;
     }
 
@@ -869,8 +931,14 @@ namespace
         for (int player = 1; player <= config.humans; ++player)
         {
             const Fighter &f = config.human[static_cast<size_t>(player - 1)];
-            if (config.mode == 1)
-                write16(field(player, kTeam), static_cast<uint16_t>(f.team));
+            if (player <= 4)
+            {
+                // A human of the select screen: the game sets it up.
+                if (config.mode == 1)
+                    write16(field(player, kTeam), static_cast<uint16_t>(f.team));
+            }
+            else if (!setUpExtra(player, f, true, config.mode))
+                continue;
             applyFighter(player, f, true);
         }
         for (int player = std::max(5, config.humans + 1 + static_cast<int>(config.bots.size())); player <= 8; ++player)
@@ -890,19 +958,8 @@ namespace
                 if (ai)
                     write32(field(player, kAiProfile), ai);
             }
-            else
-            {
-                if (!armExtra(player))
-                    continue;
-                write16(field(player, kAi1), 1);
-                write16(field(player, kAi2), 1);
-                write32(field(player, kAiProfile), ai ? ai : kBotAi);
-                write16(field(player, kTeam), static_cast<uint16_t>(config.mode == 1 ? bot.team : 4));
-                // P7 and P8 share their model with P2 and P3: they take that character, whatever was picked.
-                const uint32_t character = player == 7 ? read32(field(2, kSkin)) : player == 8 ? read32(field(3, kSkin))
-                                                                                                : static_cast<uint32_t>(bot.character);
-                write32(field(player, kSkin), character);
-            }
+            else if (!setUpExtra(player, bot, false, config.mode))
+                continue;
             applyFighter(player, bot, false);
         }
     }
@@ -930,6 +987,43 @@ namespace
         char name[16];
         std::snprintf(name, sizeof(name), "0x%02X", id);
         return name;
+    }
+
+    // The move sets of the fight that is loaded, and the fighters whose set did not fit in the 4 slots.
+    struct MovesReport
+    {
+        int used = 0;
+        std::string missing;
+    };
+
+    MovesReport movesReport()
+    {
+        MovesReport report;
+        uint32_t slotId[kMoveSlotCount]{};
+        bool slotGroup[kMoveSlotCount]{};
+        bool slotUsed[kMoveSlotCount]{};
+        for (int s = 0; s < kMoveSlotCount; ++s)
+        {
+            const uint32_t slot = kMoveSlots + static_cast<uint32_t>(s) * kMoveSlotSize;
+            slotGroup[s] = read32(slot + 0x4u) != 0;
+            slotId[s] = read32(slot + 0x8u);
+            slotUsed[s] = read32(slot + 0x10u) == 1u;
+            report.used += slotUsed[s] ? 1 : 0;
+        }
+        for (int p = 1; p <= 8; ++p)
+        {
+            const uint32_t id = read32(field(p, kSkin));
+            if (read16(field(p, kOn)) == 0 || id >= 0x48u)
+                continue;
+            const int16_t group = static_cast<int16_t>(read16(kCharacterRecords + id * kCharacterRecordSize + kMovesGroup));
+            bool found = false;
+            for (int s = 0; s < kMoveSlotCount && !found; ++s)
+                found = slotUsed[s] && (group ? slotGroup[s] && slotId[s] == static_cast<uint32_t>(group - 1)
+                                              : !slotGroup[s] && slotId[s] == id);
+            if (!found)
+                report.missing += (report.missing.empty() ? "P" : ", P") + std::to_string(p) + " " + characterName(static_cast<int>(id));
+        }
+        return report;
     }
 
     const char *const *characterNames()
@@ -1041,6 +1135,14 @@ namespace
         }
     }
 
+    // Controllers the game has: 1A and 2A, plus 3 per port with a multitap (urban.exe's PS2X_MULTITAP).
+    int hostControllers()
+    {
+        const char *ports = std::getenv("PS2X_MULTITAP");
+        const std::string multitap = ports ? ports : "";
+        return 2 + (multitap.find('1') != std::string::npos ? 3 : 0) + (multitap.find('2') != std::string::npos ? 3 : 0);
+    }
+
     void drawSettings(const UrbanModUi *ui, Config &c, bool &changed)
     {
         int on = c.on ? 1 : 0;
@@ -1054,7 +1156,7 @@ namespace
         ui->begin_disabled(!c.on);
 
         ui->separator_text(tr("1. Jogadores humanos", "1. Human players"));
-        for (int n = 1; n <= 4; ++n)
+        for (int n = 1; n <= 8; ++n)
         {
             char label[16];
             std::snprintf(label, sizeof(label), "%d##humans", n);
@@ -1065,8 +1167,17 @@ namespace
                     c.bots.resize(static_cast<size_t>(8 - n));
                 changed = true;
             }
-            if (n < 4)
+            if (n < 8)
                 ui->same_line();
+        }
+        if (c.humans > hostControllers())
+        {
+            char warning[200];
+            std::snprintf(warning, sizeof(warning),
+                          tr("O jogo tem %d controle(s) agora: para %d humanos, ligue o multitap (launcher, aba Controles: porta 2 até 5, as duas até 8) e abra o jogo de novo.",
+                             "The game has %d controller(s) now: for %d humans, switch the multitap on (launcher, Controls tab: port 2 up to 5, both up to 8) and start the game again."),
+                          hostControllers(), c.humans);
+            ui->text_colored(0xFF2ABFE8u, warning);
         }
 
         ui->separator_text(tr("2. Times", "2. Teams"));
@@ -1092,9 +1203,22 @@ namespace
             Fighter &f = c.human[static_cast<size_t>(p - 1)];
             ui->push_id(100 + p);
             char line[64];
-            std::snprintf(line, sizeof(line), tr("P%d: humano (controle %d)", "P%d: human (controller %d)"), p, p);
+            if (p >= 7)
+                std::snprintf(line, sizeof(line), tr("P%d: humano (controle %d), com o lutador do P2", "P%d: human (controller %d), with P2's fighter"), p, p);
+            else
+                std::snprintf(line, sizeof(line), tr("P%d: humano (controle %d)", "P%d: human (controller %d)"), p, p);
             ui->text(line);
             ui->indent();
+            if (p == 5 || p == 6)
+            {
+                int index = characterIndex(f.character);
+                ui->set_next_width(200.0f);
+                if (ui->combo(tr("Lutador", "Fighter"), &index, characterNames(), kCharacterCount))
+                {
+                    f.character = kCharacters[index].id;
+                    changed = true;
+                }
+            }
             if (c.mode == 1)
             {
                 ui->set_next_width(140.0f);
@@ -1116,7 +1240,7 @@ namespace
             if (player <= 4)
                 std::snprintf(line, sizeof(line), tr("P%d: CPU da seleção (escolha o lutador no jogo)", "P%d: select-screen CPU (pick the fighter in the game)"), player);
             else if (player >= 7)
-                std::snprintf(line, sizeof(line), tr("P%d: bot extra, com o lutador do P%d", "P%d: extra bot, with P%d's fighter"), player, player - 5);
+                std::snprintf(line, sizeof(line), tr("P%d: bot extra, com o lutador do P2", "P%d: extra bot, with P2's fighter"), player);
             else
                 std::snprintf(line, sizeof(line), tr("P%d: bot extra", "P%d: extra bot"), player);
             ui->text(line);
@@ -1163,6 +1287,20 @@ namespace
                       c.humans + static_cast<int>(c.bots.size()));
         ui->same_line();
         ui->text_disabled(count);
+        ui->text_disabled(tr("Golpes: a luta carrega no máximo 4 conjuntos. Cada personagem com golpes próprios ocupa 1 (repetido não conta); capangas do mesmo grupo dividem 1. Veja \"Como usar\".",
+                             "Moves: a fight loads 4 move sets at most. Each character with his own moves takes 1 (a repeat does not count); thugs of one group share 1. See \"How to use\"."));
+        if (inFight() && multiplayer())
+        {
+            const MovesReport moves = movesReport();
+            char line[256];
+            std::snprintf(line, sizeof(line), tr("Nesta luta: %d de 4 conjuntos de golpes.", "This fight: %d of 4 move sets."), moves.used);
+            ui->text_disabled(line);
+            if (!moves.missing.empty())
+            {
+                const std::string warning = std::string(tr("Sem os próprios golpes (usam os de outro lutador): ", "Without their own moves (they use another fighter's): ")) + moves.missing;
+                ui->text_colored(0xFF2ABFE8u, warning.c_str());
+            }
+        }
         ui->end_disabled();
 
         // The stage and the global options do not depend on "On": they can be used alone (Multiplayer only).
@@ -1195,7 +1333,7 @@ namespace
 
         ui->separator_text(tr("6. Opções globais", "6. Global options"));
         int force = c.forceP4Brad ? 1 : 0;
-        if (ui->checkbox(tr("Forçar P4 como Brad (garante os golpes do Brad para os bots)", "Force P4 as Brad (makes sure the bots have Brad's moves)"), &force))
+        if (ui->checkbox(tr("Forçar P4 como Brad (bots sem vaga de golpes usam os do Brad)", "Force P4 as Brad (bots without a move slot use Brad's)"), &force))
         {
             c.forceP4Brad = force != 0;
             changed = true;
@@ -1463,7 +1601,7 @@ namespace
         ui->text_wrapped(line);
         std::snprintf(line, sizeof(line), tr("3. Conecte %d controle(s) e coloque %d lutador(es) na seleção: %d humano(s)%s.",
                                              "3. Plug in %d controller(s) and put %d fighter(s) on the select screen: %d human(s)%s."),
-                      c.humans, menu, c.humans, menu > c.humans ? " + CPU" : "");
+                      c.humans, menu, std::min(4, c.humans), menu > c.humans ? " + CPU" : "");
         ui->text_wrapped(line);
         for (int p = 1; p <= menu; ++p)
         {
@@ -1477,20 +1615,24 @@ namespace
             ui->text_wrapped(tr("   Se o menu não deixar montar esses times, monte qualquer divisão com 2+ times: o CoopTool corrige quando a luta começa.",
                                 "   If the menu does not let you set up these teams, use any split with 2+ teams: CoopTool fixes it when the fight starts."));
         if (c.humans + static_cast<int>(c.bots.size()) > 4)
-            ui->text_wrapped(tr("4. Os bots extras (P5-P8) entram sozinhos quando a luta carrega, em todas as lutas.",
-                                "4. The extra bots (P5-P8) join on their own when the fight loads, in every fight."));
+            ui->text_wrapped(tr("4. Os extras (P5-P8, humanos e bots) entram sozinhos quando a luta carrega, em todas as lutas.",
+                                "4. The extras (P5-P8, humans and bots) join on their own when the fight loads, in every fight."));
 
         ui->separator_text(tr("Limitações: Multiplayer", "Limitations: Multiplayer"));
         ui->text_wrapped(tr("- Use só no Multiplayer e desligue no modo história e no Free Mode (lá o P5-P8 são inimigos de verdade). Para o Free Mode use a aba Free Mode: com ela ligada, esta parte fica parada lá.",
                             "- Use it in Multiplayer only; switch it off in story mode and Free Mode (there P5-P8 are real enemies). For Free Mode use the Free Mode tab: with it on, this part stays idle there."));
         ui->text_wrapped(tr("- Bots extras ligados no meio de uma luta só entram na próxima: o jogo só monta os lutadores quando a luta carrega.",
                             "- Extra bots switched on during a fight only join the next one: the game only sets up the fighters when the fight loads."));
-        ui->text_wrapped(tr("- Os bots extras usam os golpes do Brad: alguém em P1-P4 precisa estar com o Brad (ou ligue \"Forçar P4 como Brad\"). O lutador escolhido muda só a aparência.",
-                            "- The extra bots use Brad's moves: someone in P1-P4 has to be Brad (or switch \"Force P4 as Brad\" on). The fighter you pick only changes the looks."));
-        ui->text_wrapped(tr("- O P7 usa o lutador do P2 e o P8 o do P3: eles dividem o modelo, e o CoopTool copia sozinho.",
-                            "- P7 uses P2's fighter and P8 uses P3's: they share the model, and CoopTool copies it on its own."));
-        ui->text_wrapped(tr("- O fim da luta só olha P1-P4: os bots extras não contam para vencer.",
-                            "- The end of the fight only looks at P1-P4: the extra bots do not count for the win."));
+        ui->text_wrapped(tr("- Golpes: o jogo carrega no máximo 4 conjuntos de golpes por luta, na ordem P1..P8. Cada personagem com golpes próprios (Brad, Golem, Lilian, Shun Ying...) ocupa 1, e repetido não ocupa outro; os capangas do mesmo grupo dividem 1 (ex.: Torque, Rod e Seth; Nas-Tiii, Em Cee, Real Deal e Ty; GD 05, DR 88, FK 71 e PT 22). É assim que o modo história cabe 5+ inimigos.",
+                            "- Moves: the game loads 4 move sets per fight at most, in order P1..P8. Each character with his own moves (Brad, Golem, Lilian, Shun Ying...) takes 1, and a repeat does not take another; thugs of one group share 1 (e.g. Torque, Rod and Seth; Nas-Tiii, Em Cee, Real Deal and Ty; GD 05, DR 88, FK 71 and PT 22). That is how story mode fits 5+ enemies."));
+        ui->text_wrapped(tr("- Quem não couber nos 4 fica com os golpes de outro lutador (os do Brad se alguém em P1-P4 for o Brad; \"Forçar P4 como Brad\" garante isso, e só gasta uma vaga se ninguém mais for o Brad). Durante a luta esta aba mostra quantos conjuntos foram usados e quem ficou sem.",
+                            "- Whoever does not fit in the 4 gets another fighter's moves (Brad's when someone in P1-P4 is Brad; \"Force P4 as Brad\" makes sure of it, and only takes a slot when nobody else is Brad). During a fight this tab shows how many sets are used and who was left without."));
+        ui->text_wrapped(tr("- O P7 e o P8 usam o lutador do P2: a luta só tem 6 modelos e os dois desenham com o do P2. O CoopTool copia sozinho.",
+                            "- P7 and P8 use P2's fighter: the fight only has 6 models and both draw with P2's. CoopTool copies it on its own."));
+        ui->text_wrapped(tr("- Humanos P5-P8: o P5 precisa do multitap na porta 2 (o padrão), o P6-P8 dele nas duas portas (launcher, aba Controles). O controle N joga com o PN (ordem: 1A, 2A, 2B, 2C, 2D, 1B, 1C, 1D; o multitap da porta 1 só acrescenta os controles 6-8). Eles usam o layout de botões do controle 1 e não têm barra de vida na tela.",
+                            "- Human P5-P8: P5 needs the multitap on port 2 (the default), P6-P8 need it on both ports (launcher, Controls tab). Controller N plays PN (order: 1A, 2A, 2B, 2C, 2D, 1B, 1C, 1D; port 1's multitap only adds controllers 6-8). They use controller 1's button layout and have no health bar on the screen."));
+        ui->text_wrapped(tr("- O fim da luta só olha P1-P4: os extras (P5-P8) não contam para vencer.",
+                            "- The end of the fight only looks at P1-P4: the extras (P5-P8) do not count for the win."));
         ui->text_wrapped(tr("- CPUs da seleção precisam de lutadores liberados no seu save. A IA \"Padrão\" deles é o nível escolhido no menu do jogo.",
                             "- Select-screen CPUs need fighters unlocked in your save. Their \"Default\" AI is the level picked in the game's menu."));
         ui->text_wrapped(tr("- Com o CoopTool ligado, o KO regional e o KO por ataque do próprio time ficam desligados (evitam travamentos com 5+ lutadores).",

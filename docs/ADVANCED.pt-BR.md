@@ -50,8 +50,8 @@ Gerado a partir de [`docs/status/data.toml`](status/data.toml) por `python tools
 | Widescreen de verdade (o modo 16:9 do próprio jogo, ligado por padrão: mais da cena, não o 4:3 esticado) | ✅ |
 | Multitap (até 8 controles; porta 2 por padrão, como o jogo espera) | ✅ |
 | Controles pelo SDL3 (mapeamento no estilo do PCSX2, vibração) | ✅ |
-| Versão pronta para jogar (1.2.0) | ✅ |
-| Mods: menu no jogo (F2), .pnach ao vivo, mods em DLL + kit, CoopTool (multiplayer até 8, Free Mode até 4) | ✅ |
+| Versão pronta para jogar (1.3.0) | ✅ |
+| Mods: menu no jogo (F2), .pnach ao vivo, mods em DLL + kit, CoopTool (multiplayer até 8, humanos também; Free Mode até 4) | ✅ |
 
 O histórico completo da investigação está em [`docs/PROGRESS.md`](PROGRESS.md), e o plano em
 [`docs/ROADMAP.md`](ROADMAP.md).
@@ -143,8 +143,9 @@ Os controles passam pelo SDL3 (Xbox, PlayStation e outros, com vibração). O `c
 usa o formato do PCSX2: `[Pad1]`...`[Pad8]` com uma linha `Botão = Fonte/Elemento` por ligação (`Cross = Keyboard/Down`,
 `Cross = SDL-0/FaceSouth`, `LargeMotor = SDL-0/LargeMotor`), então dá para copiar as seções do `PCSX2.ini`; `SDL-<n>`
 é o número do controle (aparece no console quando ele conecta). Multiplayer: há um multitap na porta 2 (`[Pad]
-MultitapPort1/MultitapPort2`, até 8 controles); os jogadores seguem a ordem do PCSX2: Pad1 = porta 1, Pad2 = porta 2
-slot A, depois os slots do multitap. Um `controls.ini` de versão antiga é convertido na primeira execução (o
+MultitapPort1/MultitapPort2`, até 8 controles); jogadores: Pad1 = porta 1, Pad2 = porta 2 slot A, depois
+os slots B-D da porta 2 e os B-D da porta 1 (a porta 2 primeiro, ao contrário do PCSX2: o jogo usa ela para o
+P3/P4, então o multitap da porta 1 só acrescenta os jogadores 6-8; P5-P8 humanos com o CoopTool). Um `controls.ini` de versão antiga é convertido na primeira execução (o
 `controls.ini.old` guarda o antigo). **F1** abre o depurador do runtime (ImGui), **F3** o contador de FPS, **F5/F9**
 salvam/carregam o estado rápido, **F6** inicia/para uma captura de desempenho (**F7** marca um momento nela), **F8**
 grava uma captura de depuração (RAM + trace do VU1), **F11** alterna a tela cheia.

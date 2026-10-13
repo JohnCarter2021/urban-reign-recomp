@@ -7,7 +7,7 @@
 **Urban Reign (PS2) running natively on Windows: 60 FPS, high resolution, HD textures, up to 8 players.**
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.2.0-d9261c)
+![Version](https://img.shields.io/badge/version-1.3.0-d9261c)
 ![Status](https://img.shields.io/badge/status-beta-yellowgreen)
 ![Based on](https://img.shields.io/badge/based%20on-PS2Recomp-8A2BE2)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
@@ -55,8 +55,8 @@ and extract it into the `game\textures` folder (it should end up as `game\textur
 
 **Mods:** put mods (a folder with a `.dll`) or PCSX2 `.pnach` patches in `game\mods` and turn them on in the
 **Mods** tab; their options are in the in-game menu (**F2**). To make your own: the [mod kit](modsdk/README.md).
-The **CoopTool** mod comes with the game (`mods/CoopTool`): Multiplayer with up to 8 fighters (up to 4 humans plus
-bots, every one for himself or custom teams, Free Mode stages) and Free Mode missions with up to 4 players (number
+The **CoopTool** mod comes with the game (`mods/CoopTool`): Multiplayer with up to 8 fighters (up to 8 humans, the
+rest bots, every one for himself or custom teams, Free Mode stages) and Free Mode missions with up to 4 players (number
 of enemies, objective, each fighter's character / AI / strength / health, optional partner, enhanced camera with
 L3 / R3). Its **How to use** tab explains each part.
 

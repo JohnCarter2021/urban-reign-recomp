@@ -27,6 +27,7 @@
 #include "ps2_debug_panel.h"
 #endif
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <exception>
@@ -601,8 +602,9 @@ URBAN_PROGRESSIVE=1
 SDL = true
 
 [Pad]
-# Multitap (four controllers on one port), like PCSX2's. Urban Reign reads the extra players on port 2.
-# Players in PCSX2's order: Pad1 = port 1, Pad2 = port 2, then the multitap slots (port 1 B-D, then port 2 B-D).
+# Multitap (four controllers on one port), like PCSX2's. Urban Reign reads the extra players on port 2; for 5-8
+# human players (CoopTool) switch both ports on.
+# Players: Pad1 = port 1, Pad2 = port 2, then the multitap slots (port 2 B-D, then port 1 B-D).
 MultitapPort1 = false
 MultitapPort2 = true
 )";
@@ -924,6 +926,168 @@ MultitapPort2 = true
         ps2x::asyncvif::traceEvent('h');
     }
 
+    // The game opens only port 2's multitap (sceMtapPortOpen(1) in sub_0012B9E0), but it polls all 8 pads (1A-1D,
+    // 2A-2D). With a multitap on port 1 too ([Controls] Multitap=12), that one is opened as well, so 1B-1D connect
+    // (for 8 human players through CoopTool).
+    PS2Runtime::RecompiledFunction g_mtapPortOpen = nullptr;
+
+    void mtapPortOpenBoth(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (getRegU32(ctx, 4) == 1u)
+        {
+            const uint32_t ra = getRegU32(ctx, 31);
+            ctx->r[4] = _mm_set_epi64x(0, 0);
+            g_mtapPortOpen(rdram, ctx, runtime);
+            URBAN_INFO(Boot, "multitap on port 1 opened too: " << getRegU32(ctx, 2));
+            ctx->r[4] = _mm_set_epi64x(0, 1);
+            ctx->r[31] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(ra)));
+        }
+        g_mtapPortOpen(rdram, ctx, runtime);
+    }
+
+    void installMultitapPort1(PS2Runtime &runtime)
+    {
+        const char *ports = std::getenv("PS2X_MULTITAP");
+        if (!ports || !std::strchr(ports, '1'))
+            return;
+        g_mtapPortOpen = runtime.lookupFunction(0x318308u);
+        if (!g_mtapPortOpen)
+            return;
+        urban::FunctionHooks::instance().replace(0x318308u, "mtap_port_open_both", &mtapPortOpenBoth, urban::ReplacementStatus::Native,
+                                                 "Multitap on port 1: 8 controllers");
+    }
+
+    // Controllers 5..8. A human fighter has a controller number (+0x89A4, from +0x8DE8 when the fight starts). The game
+    // turns it into one of the 8 pads it polls (0x3597C0, 0xD0 bytes each, index slot * 2 + port) with sub_00209618's
+    // 4-entry tables (0x461148 with a multitap, 0x461158 without), and into its button layout with sub_0021CB48 (the
+    // Options' setting per controller, 0x946610 + number * 4). Numbers 4..7 read past both: P5..P8 as humans (CoopTool)
+    // get the host's pads 5..8 here (1A, 2A, 2B-2D, 1B-1D, ps2_host_input's order) and controller 1's button layout.
+    // Numbers 0..3 keep the game's table (1A, 2A, 2B, 2C: the host's pads 1..4); sending P3/P4 to port 1's slots instead
+    // leaves the select screen waiting.
+    PS2Runtime::RecompiledFunction g_padOfController = nullptr;
+    PS2Runtime::RecompiledFunction g_buttonLayout = nullptr;
+    std::vector<uint32_t> g_hostPads;
+
+    void padOfController(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t number = getRegU32(ctx, 4);
+        if (number >= 4u && number < g_hostPads.size())
+        {
+            setReturnU32(ctx, g_hostPads[number]);
+            ctx->pc = getRegU32(ctx, 31);
+            return;
+        }
+        g_padOfController(rdram, ctx, runtime);
+    }
+
+    void buttonLayout(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (getRegU32(ctx, 4) >= 4u && getRegU32(ctx, 4) < 8u)
+            ctx->r[4] = _mm_set_epi64x(0, 0);
+        g_buttonLayout(rdram, ctx, runtime);
+    }
+
+    void installEightControllers(PS2Runtime &runtime)
+    {
+        const char *ports = std::getenv("PS2X_MULTITAP");
+        const std::string multitap = ports ? ports : "";
+        g_hostPads = {0u, 1u};
+        if (multitap.find('2') != std::string::npos)
+            g_hostPads.insert(g_hostPads.end(), {3u, 5u, 7u});
+        if (multitap.find('1') != std::string::npos)
+            g_hostPads.insert(g_hostPads.end(), {2u, 4u, 6u});
+        g_padOfController = runtime.lookupFunction(0x209618u);
+        g_buttonLayout = runtime.lookupFunction(0x21cb48u);
+        if (!g_padOfController || !g_buttonLayout)
+            return;
+        urban::FunctionHooks::instance().replace(0x209618u, "pad_of_controller", &padOfController, urban::ReplacementStatus::Native,
+                                                 "Controllers 5..8 on the host's pads 5..8");
+        urban::FunctionHooks::instance().replace(0x21cb48u, "button_layout_8", &buttonLayout, urban::ReplacementStatus::Native,
+                                                 "Controllers 5..8 use controller 1's button layout");
+    }
+
+    // Extra fighters' moves. A fight's load (sub_002A13D8) loads at most 4 move sets, for the fighters marked for it
+    // (+0x9470) in order P1..P8: one per character with its own moves (record +0x5E = 0), one per group of thugs that
+    // share theirs. Each fighter then uses the moves of its move table, set from its character by sub_0027C950 (the
+    // moves, the motion banks at +0x8D86..+0x8D8A, the record at +0x88E0); a versus fight only runs it for P1..P4,
+    // story missions for their enemies too. Before the load:
+    // - a repeated character is left out (mark cleared, put back after it): a loaded set serves every fighter of that
+    //   character, but the load would give the repeat a slot of its own and leave a later fighter without one;
+    // - P5..P8 that are in the fight (+0x88E4), marked and never set up (record 0: CoopTool's extra bots) get their
+    //   move table when their set fits in the 4 slots. One that does not fit keeps Brad's moves (all 0): a move table
+    //   whose set is not loaded leaves the fighter without moves.
+    PS2Runtime::RecompiledFunction g_movesLoad = nullptr;
+    PS2Runtime::RecompiledFunction g_fighterSetup = nullptr;
+
+    void movesLoadWithExtras(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        constexpr uint32_t kFighters = 0x0059D168u; // 8 pointers
+        constexpr uint32_t kRecords = 0x0061DD50u;  // 0xA0 bytes per character id
+        constexpr int kSlots = 4;
+        const auto read32 = [rdram](uint32_t address)
+        {
+            uint32_t value = 0;
+            std::memcpy(&value, rdram + (address & PS2_RAM_MASK), 4);
+            return value;
+        };
+        const auto write32 = [rdram](uint32_t address, uint32_t value) { std::memcpy(rdram + (address & PS2_RAM_MASK), &value, 4); };
+
+        uint32_t keys[8]{};
+        int count = 0;
+        bool repeat[8]{}, setUp[8]{};
+        for (uint32_t index = 0; index < 8; ++index)
+        {
+            const uint32_t fighter = read32(kFighters + index * 4u);
+            if (fighter == 0 || fighter >= PS2_RAM_SIZE - 0x10000u || read32(fighter + 0x9470u) != 1u)
+                continue;
+            const uint32_t id = read32(fighter + 0x4u);
+            if (id >= 0x100u)
+                continue;
+            int16_t group = 0;
+            std::memcpy(&group, rdram + kRecords + id * 0xA0u + 0x5Eu, 2);
+            const uint32_t key = group ? 0x100u + static_cast<uint32_t>(group) : id;
+            const auto found = std::find(keys, keys + count, key);
+            repeat[index] = found != keys + count;
+            if (!repeat[index])
+                keys[count++] = key;
+            const bool fits = (found - keys) < kSlots;
+            setUp[index] = index >= 4 && fits && read32(fighter + 0x88E4u) == 1u && read32(fighter + 0x88E0u) == 0u;
+        }
+        for (uint32_t index = 4; index < 8; ++index)
+        {
+            if (!setUp[index])
+                continue;
+            __m128i saved[32];
+            std::memcpy(saved, ctx->r, sizeof(saved));
+            const uint64_t hi = ctx->hi, lo = ctx->lo;
+            const uint32_t pc = ctx->pc;
+            ctx->r[4] = _mm_set_epi64x(0, static_cast<int64_t>(index));
+            g_fighterSetup(rdram, ctx, runtime);
+            std::memcpy(ctx->r, saved, sizeof(saved));
+            ctx->hi = hi;
+            ctx->lo = lo;
+            ctx->pc = pc;
+            URBAN_INFO(Game, "extra fighter P" << (index + 1) << " set up for its moves");
+        }
+        for (uint32_t index = 0; index < 8; ++index)
+            if (repeat[index])
+                write32(read32(kFighters + index * 4u) + 0x9470u, 0u);
+        g_movesLoad(rdram, ctx, runtime);
+        for (uint32_t index = 0; index < 8; ++index)
+            if (repeat[index])
+                write32(read32(kFighters + index * 4u) + 0x9470u, 1u);
+    }
+
+    void installExtraFighterMoves(PS2Runtime &runtime)
+    {
+        g_movesLoad = runtime.lookupFunction(0x2a13d8u);
+        g_fighterSetup = runtime.lookupFunction(0x27c950u);
+        if (!g_movesLoad || !g_fighterSetup)
+            return;
+        urban::FunctionHooks::instance().replace(0x2a13d8u, "moves_load_extra_fighters", &movesLoadWithExtras, urban::ReplacementStatus::Native,
+                                                 "P5..P8 get their own moves");
+    }
+
     void installGsHandlerGuard(PS2Runtime &runtime)
     {
         g_gsHandler = runtime.lookupFunction(0x10bc38u);
@@ -1151,6 +1315,9 @@ int main(int argc, char *argv[])
 #endif
         installProgressivePatch(runtime);
         installGsHandlerGuard(runtime);
+        installMultitapPort1(runtime);
+        installEightControllers(runtime);
+        installExtraFighterMoves(runtime);
         urban::animdecoder::install(runtime);
         // FPS overlay (F3): 0x128dc0 runs once per iteration of the game's main loop (one game frame).
         urban::FunctionHooks::instance().observeEntry(0x128dc0u, "game_frame", [](uint8_t *, R5900Context *, PS2Runtime *runtime) {

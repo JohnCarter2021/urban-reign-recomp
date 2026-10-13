@@ -50,8 +50,8 @@ Per-library and per-component breakdown: [`docs/status/details.en.md`](status/de
 | Real widescreen (the game's own 16:9 mode, on by default: more of the scene, not a stretched 4:3) | ✅ |
 | Multitap (up to 8 controllers; port 2 by default, as the game expects) | ✅ |
 | Controllers through SDL3 (PCSX2-style mapping, vibration) | ✅ |
-| Ready-to-play release (1.2.0) | ✅ |
-| Mods: in-game menu (F2), live .pnach, DLL mods + mod kit, CoopTool (multiplayer up to 8, Free Mode up to 4) | ✅ |
+| Ready-to-play release (1.3.0) | ✅ |
+| Mods: in-game menu (F2), live .pnach, DLL mods + mod kit, CoopTool (multiplayer up to 8, humans too; Free Mode up to 4) | ✅ |
 
 The full investigation log (in Portuguese) is in [`docs/PROGRESS.md`](PROGRESS.md), and the plan in
 [`docs/ROADMAP.md`](ROADMAP.md).
@@ -143,8 +143,9 @@ Controllers go through SDL3 (Xbox, PlayStation and others, with vibration). `con
 PCSX2's format: `[Pad1]`...`[Pad8]` with one `Button = Source/Element` line per binding (`Cross = Keyboard/Down`,
 `Cross = SDL-0/FaceSouth`, `LargeMotor = SDL-0/LargeMotor`), so the sections of `PCSX2.ini` can be copied over;
 `SDL-<n>` is the controller number (printed in the console when it connects). Multiplayer: a multitap is plugged into
-port 2 (`[Pad] MultitapPort1/MultitapPort2`, up to 8 controllers); players follow PCSX2's order: Pad1 = port 1,
-Pad2 = port 2 slot A, then the multitap slots. A `controls.ini` from an older version is converted on the first run
+port 2 (`[Pad] MultitapPort1/MultitapPort2`, up to 8 controllers); players: Pad1 = port 1, Pad2 = port 2 slot A,
+then port 2's slots B-D and port 1's B-D (port 2 first, unlike PCSX2: the game uses it for P3/P4, so port 1's
+multitap only adds players 6-8; P5-P8 as humans with CoopTool). A `controls.ini` from an older version is converted on the first run
 (`controls.ini.old` keeps it). **F1** opens the runtime debugger (ImGui), **F3** the FPS counter, **F5/F9** quick save/load
 state, **F6** starts/stops a performance capture (**F7** marks a moment in it), **F8** writes a debug capture
 (RAM + VU1 trace), **F11** toggles fullscreen.
