@@ -79,7 +79,8 @@ em 1x.
 4. **Savestate, configuração no `config.ini`, lista de shaders pré-compilados.** Savestate feito na fase 2 (§82);
    GS do PCSX2 como padrão e filtros no `config.ini` (§85); OSD, shaders e cache de shaders no repositório (§86).
    **Feita.**
-5. **Depois:** widescreen de verdade, texturas HD, Vulkan/DX12, teste na RX 580. Texturas HD feitas (PROGRESS §87).
+5. **Depois:** widescreen de verdade, texturas HD, Vulkan/DX12, teste na RX 580. Texturas HD feitas (PROGRESS §87). Widescreen feito
+   (PROGRESS §117).
 
 ## Correções do PCSX2 para o Urban Reign (GameIndex.yaml, `SLUS-21209`)
 

@@ -9,6 +9,7 @@
 #include "runtime/gs/gs_gpu_backend.h"
 #include "runtime/gs/gs_pcsx2_backend.h"
 #include "urban/anim_decoder.h"
+#include "urban/aspect.h"
 #include "urban/call_profile.h"
 #include "urban/call_trace.h"
 #include "urban/function_hooks.h"
@@ -321,8 +322,11 @@ ScreenFilter=1
 Dithering=2
 # Blending accuracy: 0 = minimum ... 1 = basic (default) ... 5 = maximum (heavier).
 BlendingAccuracy=1
-# Stretch the image to the window: 1 = yes, 0 = keep 4:3 with black bars.
+# Stretch the image to the window: 1 = yes, 0 = keep the aspect ratio below with black bars.
 Stretch=0
+# Aspect ratio: 16:9 = real widescreen (the game's own 16:9 mode: the camera shows more of the scene), 4:3 = the
+# original picture, auto = as the game's option (Options > 4:3 / 16:9).
+AspectRatio=16:9
 # HD textures (PCSX2 texture packs, PNG/DDS): 1 = use them, 0 = no.
 HDTextures=1
 # Pack folder (the one with the "replacements" subfolder); empty = textures\SLUS-21209 next to urban.exe or in the repository.
@@ -386,6 +390,7 @@ URBAN_PROGRESSIVE=1
         {"video", "dithering", "pontilhado", "PS2X_PCSX2_DITHERING"},
         {"video", "blendingaccuracy", "precisaomistura", "PS2X_PCSX2_BLENDING"},
         {"video", "stretch", "esticar", "PS2X_PCSX2_STRETCH"},
+        {"video", "aspectratio", "proporcao", "URBAN_ASPECT"},
         {"video", "hdtextures", "texturashd", "PS2X_PCSX2_TEXTURES"},
         {"video", "hdtexturesfolder", "pastatexturas", "PS2X_PCSX2_TEXTURE_DIR"},
         {"video", "preloadhdtextures", "precarregartexturas", "PS2X_PCSX2_TEXTURE_PRECACHE"},
@@ -1128,6 +1133,7 @@ int main(int argc, char *argv[])
             const char *dlls = std::getenv("URBAN_MOD_DLLS");
             urban::modloader::loadAll(exeDir / "mods", dlls ? dlls : "", portuguese ? "pt" : "en", runtime.memory().getRDRAM());
         }
+        urban::aspect::install(runtime.memory().getRDRAM());
         PS2Runtime::setIoPaths(paths);
 
         const char *missingPolicy = std::getenv("URBAN_MISSING_FUNCTION");

@@ -306,3 +306,10 @@ extern "C" __declspec(dllexport) const Pcsx2GsApi *pcsx2gs_get_api(uint32_t vers
 {
     return version == PCSX2GS_API_VERSION ? &g_api : nullptr;
 }
+
+// The aspect ratio while the game runs (0 = 4:3, 1 = 16:9, 2 = fill the window), read at every present: the port uses
+// it to follow the game's own 4:3 / 16:9 option. Exported on its own so that the API table above stays the same.
+extern "C" __declspec(dllexport) void pcsx2gs_set_aspect(uint32_t mode)
+{
+    EmuConfig.CurrentAspectRatio = mode == 2u ? AspectRatioType::Stretch : mode == 1u ? AspectRatioType::R16_9 : AspectRatioType::R4_3;
+}

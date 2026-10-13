@@ -2698,6 +2698,32 @@ lista de pendências.
       13, Abandoned Theater 34, luta de 4 (`fight4_heavy`) 6; prints com/sem mostram o piso em HD de perto e de longe;
       60 FPS iguais. `PS2X_PCSX2_MIP_HASH_FALLBACK=0` desliga as duas partes. Release v1.1.2.
 
+117. **Widescreen de verdade (2026-10-13).** Não há patch de widescreen público para o Urban Reign (nem no
+    `pcsx2_patches`, nem no fórum), mas o próprio jogo tem: o menu Options (`kg_option.cpp`, `sub_00200C78`) tem
+    "4:3"/"16:9", salvo no perfil. `sub_002016B8` copia a escolha para as configurações de tela ([0x34D394] =
+    0x34D220, +0x50 = 1 em 16:9); `sub_00128880` zera no boot. Quem lê a flag:
+    - a câmera (`sub_00125958`): a escala horizontal da projeção (`obj+0x288`, câmera em 0x34D3A0, = `+0x2A0` × a
+      escala do 4:3 em settings+0x38, 1.1, por `sub_00125918`) é multiplicada por 0.8 antes de `func_101B78`;
+    - partes do HUD (`sub_0012AE18` ×0.75, `sub_0012AE98` em torno de x = 320, `sub_001EA5D8`/`001EB8B0`/`001ED4D0`
+      ×1.25, `sub_001B83C8`);
+    - os vídeos de abertura (`sub_001E1B48`, tabela em 0x458768: `cri_wide`, `namco_wide`, `title_wide_US`).
+    O port (`src/urban/aspect.cpp`, `config.ini [Video] AspectRatio`, `URBAN_ASPECT`): `16:9` (padrão) escreve a flag
+    = 1 a cada quadro (gancho de quadro dos .pnach, na thread do EE), `4:3` = 0, `auto` deixa o menu decidir. A saída
+    do GS do PCSX2 segue a flag (`pcsx2gs_set_aspect` no `Bridge.cpp`, `ps2x::gs::setAspect` em `gs_aspect.h`, header
+    à parte para não recompilar o código gerado); `Stretch=1` continua esticando até a janela. Proporção exata: o 0.8
+    do jogo deixa a cena ~7% larga (16:9 é 3/4 da largura do 4:3, o HUD já usa 0.75), então `obj+0x288` passa a ser
+    `+0x2A0` × settings+0x38 × 0.75/0.8 em 16:9 (e × 1 em 4:3). Conferido: a luta abre em 16:9 ("[aspect] the game's
+    screen is 16:9"), imagem em 1920×1080 cheia, personagens na proporção; testado pelo usuário.
+
+118. **Mipmaps nas texturas HD (2026-10-13).** Depois do §116 o piso do dojo (tatame com trama fina, PNG do pack)
+    mostrava moiré de longe: o primeiro nível é sempre o 0, e a textura HD (sem mips) era amostrada inteira nas
+    superfícies distantes. Agora `CreateReplacementTexture` cria as substituições sem mips e não comprimidas com a
+    cadeia toda (`CalcMipmapLevelsForReplacement`, gerada na GPU por `GenerateMipmapsIfNeeded`), e
+    `EmulateTextureSampler` amostra uma fonte que é substituição com mips pelo LOD da GPU (`trilinear_auto`, trilinear
+    e anisotrópico; não o LOD manual dos níveis do GS, que não sabe que a textura é várias vezes maior). DDS com mips
+    próprios usam os deles; DDS comprimidos sem mips ficam como antes. `PS2X_PCSX2_HD_MIPMAPS=0` desliga. Conferido:
+    luta no ferro-velho com HD normal, 60 FPS; o usuário confirmou o tatame sem as listras. Release v1.2.0 (com o §117).
+
 ## Ferramentas
 
 Ver a tabela de variáveis de ambiente no README. As mais úteis até agora:

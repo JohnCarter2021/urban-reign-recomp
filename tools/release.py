@@ -27,7 +27,7 @@ WORK = ROOT / "build" / "launcher"
 VENV = WORK / "venv"
 LAUNCHER_EXE = WORK / "dist" / "Urban Reign.exe"
 RELEASE = ROOT / "build" / "release"
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 
 GAME_ROOTS = ["urban.exe", "pcsx2gs.dll"]  # pcsx2gs.dll is loaded with LoadLibrary, not imported
 GAME_FOLDERS = ["resources", "shadercache_pcsx2"]
@@ -44,6 +44,8 @@ EN
 - Graphics, controllers (PCSX2 style, multitap, vibration) and mods are set in the launcher.
 - Mods: each mod is a folder in game\\mods; turn them on in the Mods tab, their options are in the in-game menu (F2).
   CoopTool comes with it: Multiplayer with up to 8 fighters and Free Mode missions with up to 4 players.
+- Widescreen: real 16:9 by default (the camera shows more). For the original 4:3, set AspectRatio=4:3 in
+  game\\config.ini, [Video].
 - HD textures: put a PCSX2 texture pack in game\\textures\\SLUS-21209 (the folder with "replacements").
 - In game: F11 fullscreen, F3 FPS counter, F5/F9 quick save/load state.
 - Needs Windows 10/11 64-bit, a DirectX 11 graphics card and a CPU with SSE4.1.
@@ -54,6 +56,8 @@ PT
 - Gráficos, controles (estilo PCSX2, multitap, vibração) e mods são configurados no launcher.
 - Mods: cada mod é uma pasta em game\\mods; ligue na aba Mods, as opções ficam no menu do jogo (F2).
   O CoopTool já vem junto: Multiplayer com até 8 lutadores e missões do Free Mode com até 4 jogadores.
+- Widescreen: 16:9 de verdade por padrão (a câmera mostra mais). Para o 4:3 original, coloque AspectRatio=4:3 no
+  game\\config.ini, em [Video].
 - Texturas HD: coloque um pacote do PCSX2 em game\\textures\\SLUS-21209 (a pasta com "replacements").
 - No jogo: F11 tela cheia, F3 contador de FPS, F5/F9 salvar/carregar estado rápido.
 - Precisa de Windows 10/11 64 bits, placa de vídeo DirectX 11 e processador com SSE4.1.

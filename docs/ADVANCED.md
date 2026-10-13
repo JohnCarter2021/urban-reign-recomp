@@ -47,10 +47,10 @@ Per-library and per-component breakdown: [`docs/status/details.en.md`](status/de
 | Performance: 8-fighter brawl at a steady 60 FPS, 1x to 8x internal resolution (GTX 1660 SUPER) | ✅ |
 | PCSX2 GS renderer: FXAA, texture filtering, CAS sharpening, TV shaders, HD texture packs | ✅ |
 | Sofdec videos (emulated IPU) | ✅ |
-| Real widescreen (render more of the scene, not stretch 4:3) | ⏳ |
+| Real widescreen (the game's own 16:9 mode, on by default: more of the scene, not a stretched 4:3) | ✅ |
 | Multitap (up to 8 controllers; port 2 by default, as the game expects) | ✅ |
 | Controllers through SDL3 (PCSX2-style mapping, vibration) | ✅ |
-| Ready-to-play release (1.1.2) | ✅ |
+| Ready-to-play release (1.2.0) | ✅ |
 | Mods: in-game menu (F2), live .pnach, DLL mods + mod kit, CoopTool (multiplayer up to 8, Free Mode up to 4) | ✅ |
 
 The full investigation log (in Portuguese) is in [`docs/PROGRESS.md`](PROGRESS.md), and the plan in
@@ -124,10 +124,10 @@ over an hour (≈10k generated files); later builds only recompile what changed.
 
 ### Release
 
-`python build.py release` puts together what goes in a GitHub release: `build/release/UrbanReignPC-1.1.2.zip` with
+`python build.py release` puts together what goes in a GitHub release: `build/release/UrbanReignPC-1.2.0.zip` with
 `game/` (`urban.exe`, only the DLLs it loads, `pcsx2gs.dll` + resources, `mods/`, `textures/`), README, LICENSE and
 THIRD-PARTY notes. No disc data and nothing the game writes at run time goes in it. Running it again updates
-`build/release/UrbanReignPC-1.1.2` in place: settings, memory cards, states, mods and textures there are kept.
+`build/release/UrbanReignPC-1.2.0` in place: settings, memory cards, states, mods and textures there are kept.
 
 ## Controls and settings
 
@@ -156,6 +156,8 @@ Video settings are in `config.ini` next to `urban.exe` (created on the first run
 with their defaults):
 
 - `InternalResolution=1..8` (1 = native, 2 = 1280×896, 3 = 1920×1344...), `StartMaximized`, `Stretch`.
+- `AspectRatio=16:9` (default: real widescreen, the game's own 16:9 mode with the exact proportion), `4:3` (the
+  original picture) or `auto` (as the game's Options menu).
 - `Renderer=pcsx2` (default: PCSX2's GS with the GameIndex fixes for Urban Reign) or `native` (the port's own GS).
 - PCSX2's filters: `FXAA` (on by default), `TextureFiltering`, `TrilinearFiltering`, `AnisotropicFiltering`,
   `Sharpening` (CAS), `ColorCorrection` (brightness/contrast/saturation/gamma), `TVShader` (scanlines, CRT...),

@@ -1,4 +1,5 @@
 #include "runtime/gs/gs_pcsx2_backend.h"
+#include "runtime/gs/gs_aspect.h"
 
 #include <algorithm>
 #include <atomic>
@@ -29,6 +30,7 @@ static_assert(sizeof(GSVSyncRegs) == sizeof(Pcsx2GsPrivRegs), "GSVSyncRegs must 
 namespace
 {
     const Pcsx2GsApi *g_api = nullptr;
+    void(__cdecl *g_setAspect)(uint32_t) = nullptr; // pcsx2gs_set_aspect, when the DLL has it
     const std::chrono::steady_clock::time_point g_processStart = std::chrono::steady_clock::now();
     HWND g_parent = nullptr;
     HWND g_child = nullptr;
@@ -192,6 +194,7 @@ bool GSPcsx2Backend::Requested()
         }
         const auto getApi = reinterpret_cast<Pcsx2GsGetApiFn>(GetProcAddress(module, "pcsx2gs_get_api"));
         g_api = getApi ? getApi(PCSX2GS_API_VERSION) : nullptr;
+        g_setAspect = reinterpret_cast<void(__cdecl *)(uint32_t)>(GetProcAddress(module, "pcsx2gs_set_aspect"));
         if (!g_api)
         {
             std::fprintf(stderr, "[gs] pcsx2gs.dll has no matching pcsx2gs_get_api (version %u); using the built-in GS\n",
@@ -560,7 +563,15 @@ void GSPcsx2Backend::VSync(const GSVSyncRegs &regs)
     }
 }
 
+void ps2x::gs::setAspect(Aspect aspect)
+{
+    if (g_setAspect)
+        g_setAspect(aspect == Aspect::Stretch ? 2u : aspect == Aspect::R16_9 ? 1u : 0u);
+}
+
 #else // no pcsx2gs_api.h: the built-in GS only
+
+void ps2x::gs::setAspect(Aspect) {}
 
 bool GSPcsx2Backend::Requested() { return false; }
 void GSPcsx2Backend::AttachHostWindow(void *) {}

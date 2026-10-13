@@ -7,7 +7,7 @@
 **Urban Reign (PS2) rodando nativo no Windows: 60 FPS, alta resolução, texturas HD, até 8 jogadores.**
 
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%20x64-0078D6?logo=windows&logoColor=white)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-1.1.2-d9261c)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-1.2.0-d9261c)
 ![Status](https://img.shields.io/badge/status-beta-yellowgreen)
 ![Baseado em](https://img.shields.io/badge/baseado%20em-PS2Recomp-8A2BE2)
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-blue)
@@ -29,6 +29,7 @@ compilado como um programa de Windows, em vez de ser emulado. Os gráficos usam 
 usar resolução interna alta, filtros de textura e pacotes de texturas HD.
 
 - 60 FPS (progressive scan), inclusive nas lutas de 8
+- Widescreen de verdade (16:9, a câmera mostra mais do cenário) ou o 4:3 original
 - Resolução interna de 1x a 8x, FXAA, nitidez, shaders de TV
 - Pacotes de texturas HD (formato do PCSX2)
 - Controles de Xbox, PlayStation e outros, com vibração; multitap para até 8 jogadores

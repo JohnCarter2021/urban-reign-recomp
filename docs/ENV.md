@@ -58,7 +58,9 @@
 | `PS2X_PCSX2_VSYNC=0/1/2` | (runtime, GS do PCSX2) apresentação: 0 = sem esperar (pode rasgar), 1 = FIFO (espera o monitor), 2 = mailbox (padrão) |
 | `PS2X_PCSX2_TEXTURES=0`, `PS2X_PCSX2_TEXTURE_DIR=dir`, `PS2X_PCSX2_TEXTURE_PRECACHE=1` | (runtime, GS do PCSX2) texturas HD: desliga / pasta do pacote (a que tem `replacements/`; padrão `textures\SLUS-21209` ao lado do exe) / carregar tudo ao abrir; no `config.ini`: `HDTextures`, `HDTexturesFolder`, `PreloadHDTextures` |
 | `PS2X_PCSX2_MIP_HASH_FALLBACK=0` | (runtime, GS do PCSX2) desliga o ajuste das texturas HD com mipmapping (procurar pelo hash do nível 0 e começar sempre no nível 0; PROGRESS §116) |
-| `PS2X_PCSX2_STRETCH=1` (`Stretch=1`) | (runtime, GS do PCSX2) estica a imagem até a janela em vez de 4:3 com barras |
+| `PS2X_PCSX2_STRETCH=1` (`Stretch=1`) | (runtime, GS do PCSX2) estica a imagem até a janela em vez da proporção com barras |
+| `PS2X_PCSX2_HD_MIPMAPS=0` | (runtime, GS do PCSX2) não gera mipmaps para as texturas HD sem mips (PNG) nem usa o LOD da GPU nelas (PROGRESS §118) |
+| `URBAN_ASPECT=16:9\|4:3\|auto` (`AspectRatio`) | proporção: `16:9` (padrão) liga o modo 16:9 do próprio jogo com a câmera na proporção exata, `4:3` o desliga, `auto` segue o menu Options do jogo (PROGRESS §117) |
 | `PS2X_FRAME_TIMES=f` com o GS do PCSX2 | (runtime) uma linha por apresentação na GSThread; "imagem nova" = field com >= 4 KB de GIF (sem hash da imagem) |
 | `PS2X_PCSX2_SNAPSHOT_DIR=dir` | (runtime, GS do PCSX2) grava a imagem do GS (resolução interna) a cada `PS2X_PCSX2_SNAPSHOT_EVERY` fields (300) como `field-<n>.bmp` |
 | `PS2X_GIF_DUMP=<s>:<fields>:<arquivo>` | (runtime, GS do PCSX2) grava o fluxo GIF enviado ao GS (mais a memória do GS no início) por `<fields>` fields a partir de `<s>` s; `tools/gif_dump.py` lista os desenhos (posição, textura, cor) e as transferências |

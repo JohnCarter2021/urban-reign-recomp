@@ -424,7 +424,8 @@ numa janela de teste em 2x/4x); fase 2 feita (§82: `pcsx2gs.dll` ligada no runt
 luta certos, fight8 54.7 fps em 1x / 56.3 em 4x com a GSThread em ~29%); fase 3 feita (§83: leitura do flare
 assíncrona; fight8 60 fps / 60 distintas de 1x a 8x, GSThread ~28%; §84: 2 núcleos 56-57 fps, 4 núcleos 59.5-59.9 em 1x e 4x); fase 4 feita (§85-86: o GS do PCSX2 é o
 padrão; filtros no `config.ini`, FXAA ligado; OSD em inglês; shaders, fonte e cache de shaders no repositório).
-Fase 5: texturas HD feitas (§87, pacotes do PCSX2, PNG por WIC); faltam widescreen de verdade e Vulkan/DX12. O
+Fase 5: texturas HD feitas (§87, pacotes do PCSX2, PNG por WIC); widescreen de verdade feito (§117, o modo 16:9 do
+próprio jogo); falta Vulkan/DX12. O
 código do PCSX2 usado está no repositório desde §90 (`thirdparty/pcsx2`).
 
 ### Fase D — validação em máquina menor

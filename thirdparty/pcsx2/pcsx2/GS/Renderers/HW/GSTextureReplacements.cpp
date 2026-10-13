@@ -22,6 +22,7 @@
 
 #include <cinttypes>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <functional>
@@ -836,7 +837,17 @@ GSTexture* GSTextureReplacements::CreateReplacementTexture(const ReplacementText
 		mipmap = false;
 	}
 
-	GSTexture* tex = g_gs_device->CreateTexture(rtex.width, rtex.height, static_cast<int>(rtex.mips.size()) + 1, rtex.format);
+	// Urban Reign PC port: a replacement without its own mips (PNG) gets a generated chain, which the HW renderer samples
+	// with the GPU's LOD (GSRendererHW::EmulateTextureSampler): otherwise far surfaces show the full size HD texture
+	// (moiré on fine patterns). PS2X_PCSX2_HD_MIPMAPS=0 turns it off.
+	static const bool s_generate_mips = []() {
+		const char* value = std::getenv("PS2X_PCSX2_HD_MIPMAPS");
+		return !(value && value[0] == '0');
+	}();
+	const int levels = (s_generate_mips && rtex.mips.empty() && !GSTexture::IsCompressedFormat(rtex.format)) ?
+	                       static_cast<int>(CalcMipmapLevelsForReplacement(rtex.width, rtex.height)) :
+	                       static_cast<int>(rtex.mips.size()) + 1;
+	GSTexture* tex = g_gs_device->CreateTexture(rtex.width, rtex.height, levels, rtex.format);
 	if (!tex)
 		return nullptr;
 

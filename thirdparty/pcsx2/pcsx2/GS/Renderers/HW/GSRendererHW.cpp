@@ -8134,7 +8134,12 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt, 
 	const bool shader_emulated_sampler = tex->m_palette || (tex->m_target && !m_conf.ps.shuffle && cpsm.fmt != 0) ||
 	                                     complex_wms_wmt || psm.depth || target_region;
 	const bool can_trilinear = !tex->m_palette && !tex->m_target && !m_conf.ps.shuffle;
-	const bool trilinear_manual = need_mipmap && GSConfig.HWMipmap;
+	// Urban Reign PC port: an HD replacement with its own mip chain (GSTextureReplacements::CreateReplacementTexture)
+	// is sampled with the GPU's LOD, which knows its real size. The GS levels (manual LOD) would sample level 0 of a
+	// texture several times bigger on far surfaces: moire on fine patterns.
+	const bool hd_mips = can_trilinear && tex->m_from_hash_cache && tex->m_from_hash_cache->is_replacement &&
+	                     tex->m_texture->GetMipmapLevels() > 1;
+	const bool trilinear_manual = need_mipmap && GSConfig.HWMipmap && !hd_mips;
 
 	bool bilinear = m_vt.IsLinear();
 	int trilinear = 0;
@@ -8169,6 +8174,14 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt, 
 		case TriFiltering::Off:
 		default:
 			break;
+	}
+	if (hd_mips)
+	{
+		const GS_MIN_FILTER filter = GSConfig.TriFilter == TriFiltering::Off ?
+		                                 (bilinear ? GS_MIN_FILTER::Linear_Mipmap_Nearest : GS_MIN_FILTER::Nearest_Mipmap_Nearest) :
+		                                 (bilinear ? GS_MIN_FILTER::Linear_Mipmap_Linear : GS_MIN_FILTER::Nearest_Mipmap_Linear);
+		trilinear = static_cast<u8>(filter);
+		trilinear_auto = true;
 	}
 
 	// 1 and 0 are equivalent
