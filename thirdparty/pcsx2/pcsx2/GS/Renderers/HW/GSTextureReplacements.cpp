@@ -538,6 +538,11 @@ bool GSTextureReplacements::HasAnyReplacementTextures()
 	return !s_replacement_texture_filenames.empty();
 }
 
+bool GSTextureReplacements::HasReplacementTexture(const GSTextureCache::HashCacheKey& hash)
+{
+	return s_replacement_texture_filenames.find(CreateTextureName(hash, 0)) != s_replacement_texture_filenames.end();
+}
+
 bool GSTextureReplacements::HasReplacementTextureWithOtherPalette(const GSTextureCache::HashCacheKey& hash)
 {
 	const TextureName name(CreateTextureName(hash.WithRemovedCLUTHash(), 0));

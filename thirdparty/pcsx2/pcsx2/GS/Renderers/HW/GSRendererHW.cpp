@@ -3432,6 +3432,17 @@ void GSRendererHW::Draw()
 			m_lod.x = std::min<int>(m_lod.x, mxl);
 			m_lod.y = std::min<int>(m_lod.y, mxl);
 
+			// Urban Reign PC port: with HD replacement textures, the first layer is always level 0. A far surface
+			// otherwise starts at a smaller level, whose data (and so its hash) differs from the level 0 the pack
+			// replaces: the HD texture popped in up close and out far away. The full chain is uploaded instead and the
+			// shader still picks the level (LODParams.z = 0).
+			static const bool s_hd_level0 = []() {
+				const char* value = std::getenv("PS2X_PCSX2_MIP_HASH_FALLBACK");
+				return !(value && value[0] == '0');
+			}();
+			if (s_hd_level0 && GSConfig.LoadTextureReplacements && GSTextureReplacements::HasAnyReplacementTextures())
+				m_lod.x = 0;
+
 			TEX0 = (m_lod.x == 0) ? m_cached_ctx.TEX0 : GetTex0Layer(m_lod.x);
 
 			// upload the full chain (with offset) for the hash cache, in case some other texture uses more levels

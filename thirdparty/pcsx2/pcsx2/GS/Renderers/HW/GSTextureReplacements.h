@@ -38,6 +38,7 @@ namespace GSTextureReplacements
 	u32 CalcMipmapLevelsForReplacement(u32 width, u32 height);
 
 	bool HasAnyReplacementTextures();
+	bool HasReplacementTexture(const GSTextureCache::HashCacheKey& hash);
 	bool HasReplacementTextureWithOtherPalette(const GSTextureCache::HashCacheKey& hash);
 	GSTexture* LookupReplacementTexture(const GSTextureCache::HashCacheKey& hash, bool mipmap, bool* pending, std::pair<u8, u8>* alpha_minmax);
 	GSTexture* CreateReplacementTexture(const ReplacementTexture& rtex, bool mipmap);

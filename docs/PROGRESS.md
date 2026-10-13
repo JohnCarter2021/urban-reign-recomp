@@ -2684,6 +2684,20 @@ lista de pendências.
     usuário. Conferido extraindo o ZIP numa pasta limpa: o jogo abre, roda a abertura e o CoopTool carrega (aba
     própria e código por quadro). Notas em `docs/releases/v1.1.0.md`.
 
+116. **Texturas HD com mipmapping (2026-10-13).** Relato de um jogador: algumas texturas do pack HD não carregavam
+    (o piso do Chinese Market), e outras apareciam de perto e sumiam de longe; no PCSX2 ele usava o mipmapping
+    desligado. Confirmado no GS do PCSX2 (`thirdparty/pcsx2`), que o port usa com `Mipmap`/`HWMipmap` ligados:
+    - **Hash com os mips:** com o mipmapping ligado, `HashCacheKey::Create` junta ao hash do nível 0 os níveis do
+      mipmap; o pack foi feito com ele desligado (hash só do nível 0) e não batia. Agora, quando o hash completo não tem
+      substituição, `LookupHashCache` tenta o do nível principal (e usa essa chave no hash cache, onde a textura
+      carregada em segundo plano entra); o log do jogo diz "HD texture ... found by its base level's hash".
+    - **Pisca com a distância:** longe, `GSRendererHW` começa a textura num nível menor (`m_lod.x` > 0,
+      `GetTex0Layer`), com outros dados e outro hash. Com substituições ativas, o primeiro nível agora é sempre o 0 (a
+      cadeia inteira vai para a GPU e o shader escolhe o nível, `LODParams.z` = 0).
+    - Conferido com o pack: texturas achadas pelo hash do nível 0 em Chinatown 3 → 9 com a segunda parte, Back Alley
+      13, Abandoned Theater 34, luta de 4 (`fight4_heavy`) 6; prints com/sem mostram o piso em HD de perto e de longe;
+      60 FPS iguais. `PS2X_PCSX2_MIP_HASH_FALLBACK=0` desliga as duas partes. Release v1.1.2.
+
 ## Ferramentas
 
 Ver a tabela de variáveis de ambiente no README. As mais úteis até agora:

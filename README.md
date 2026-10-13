@@ -7,7 +7,7 @@
 **Urban Reign (PS2) running natively on Windows: 60 FPS, high resolution, HD textures, up to 8 players.**
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.1.1-d9261c)
+![Version](https://img.shields.io/badge/version-1.1.2-d9261c)
 ![Status](https://img.shields.io/badge/status-beta-yellowgreen)
 ![Based on](https://img.shields.io/badge/based%20on-PS2Recomp-8A2BE2)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)

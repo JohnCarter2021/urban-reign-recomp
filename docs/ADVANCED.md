@@ -50,7 +50,7 @@ Per-library and per-component breakdown: [`docs/status/details.en.md`](status/de
 | Real widescreen (render more of the scene, not stretch 4:3) | ⏳ |
 | Multitap (up to 8 controllers; port 2 by default, as the game expects) | ✅ |
 | Controllers through SDL3 (PCSX2-style mapping, vibration) | ✅ |
-| Ready-to-play release (1.1.1) | ✅ |
+| Ready-to-play release (1.1.2) | ✅ |
 | Mods: in-game menu (F2), live .pnach, DLL mods + mod kit, CoopTool (multiplayer up to 8, Free Mode up to 4) | ✅ |
 
 The full investigation log (in Portuguese) is in [`docs/PROGRESS.md`](PROGRESS.md), and the plan in
@@ -124,10 +124,10 @@ over an hour (≈10k generated files); later builds only recompile what changed.
 
 ### Release
 
-`python build.py release` puts together what goes in a GitHub release: `build/release/UrbanReignPC-1.1.1.zip` with
+`python build.py release` puts together what goes in a GitHub release: `build/release/UrbanReignPC-1.1.2.zip` with
 `game/` (`urban.exe`, only the DLLs it loads, `pcsx2gs.dll` + resources, `mods/`, `textures/`), README, LICENSE and
 THIRD-PARTY notes. No disc data and nothing the game writes at run time goes in it. Running it again updates
-`build/release/UrbanReignPC-1.1.1` in place: settings, memory cards, states, mods and textures there are kept.
+`build/release/UrbanReignPC-1.1.2` in place: settings, memory cards, states, mods and textures there are kept.
 
 ## Controls and settings
 

@@ -7090,6 +7090,27 @@ GSTextureCache::HashCacheEntry* GSTextureCache::LookupHashCache(const GIFRegTEX0
 		}
 	}
 
+	// Urban Reign PC port: with mipmapping on, a mipmapped texture's hash also covers its mip levels, so a replacement
+	// pack dumped with mipmapping off (the hash of the base level only) never matches it. When only the base level's
+	// hash has a replacement, that key is used (also for the hash cache, where the loaded replacement goes).
+	static const bool s_base_level_fallback = []() {
+		const char* value = std::getenv("PS2X_PCSX2_MIP_HASH_FALLBACK");
+		return !(value && value[0] == '0');
+	}();
+	if (s_base_level_fallback && replace && lod && !GSTextureReplacements::HasReplacementTexture(key))
+	{
+		const HashCacheKey base_key{HashCacheKey::Create(TEX0, TEXA, (dump || replace || !paltex) ? clut : nullptr, nullptr, region)};
+		if (GSTextureReplacements::HasReplacementTexture(base_key) ||
+			(paltex && GSTextureReplacements::HasReplacementTextureWithOtherPalette(base_key)))
+		{
+			static std::unordered_set<u64> s_logged;
+			if (s_logged.insert(base_key.TEX0Hash ^ base_key.CLUTHash).second)
+				std::fprintf(stderr, "[pcsx2-gs] HD texture %016llx found by its base level's hash (mipmapped; %zu so far)\n",
+					static_cast<unsigned long long>(base_key.TEX0Hash), s_logged.size());
+			key = base_key;
+		}
+	}
+
 	// check with the full key
 	auto it = m_hash_cache.find(key);
 
