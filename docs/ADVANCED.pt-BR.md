@@ -50,7 +50,7 @@ Gerado a partir de [`docs/status/data.toml`](status/data.toml) por `python tools
 | Widescreen de verdade (renderizar mais da cena, não esticar o 4:3) | ⏳ |
 | Multitap (até 8 controles; porta 2 por padrão, como o jogo espera) | ✅ |
 | Controles pelo SDL3 (mapeamento no estilo do PCSX2, vibração) | ✅ |
-| Versão pronta para jogar (1.1.0) | ✅ |
+| Versão pronta para jogar (1.1.1) | ✅ |
 | Mods: menu no jogo (F2), .pnach ao vivo, mods em DLL + kit, CoopTool (multiplayer até 8, Free Mode até 4) | ✅ |
 
 O histórico completo da investigação está em [`docs/PROGRESS.md`](PROGRESS.md), e o plano em
@@ -124,10 +124,10 @@ mais de uma hora (≈10 mil arquivos gerados); os seguintes só recompilam o que
 
 ### Release
 
-`python build.py release` monta o que vai num release do GitHub: `build/release/UrbanReignPC-1.1.0.zip` com `game/`
+`python build.py release` monta o que vai num release do GitHub: `build/release/UrbanReignPC-1.1.1.zip` com `game/`
 (`urban.exe`, só as DLLs que ele carrega, `pcsx2gs.dll` + resources, `mods/`, `textures/`), README, LICENSE e
 THIRD-PARTY. Não vai nada do disco nem nada que o jogo grava ao rodar. Rodar de novo atualiza a
-`build/release/UrbanReignPC-1.1.0` no lugar: configurações, memory cards, states, mods e texturas dela ficam.
+`build/release/UrbanReignPC-1.1.1` no lugar: configurações, memory cards, states, mods e texturas dela ficam.
 
 ## Controles e configurações
 

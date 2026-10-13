@@ -27,7 +27,7 @@ WORK = ROOT / "build" / "launcher"
 VENV = WORK / "venv"
 LAUNCHER_EXE = WORK / "dist" / "Urban Reign.exe"
 RELEASE = ROOT / "build" / "release"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 GAME_ROOTS = ["urban.exe", "pcsx2gs.dll"]  # pcsx2gs.dll is loaded with LoadLibrary, not imported
 GAME_FOLDERS = ["resources", "shadercache_pcsx2"]
@@ -140,7 +140,7 @@ def build_launcher() -> int:
     if run([python, "-m", "pip", "install", "--disable-pip-version-check", "-q", "-r", LAUNCHER / "requirements.txt"]):
         return 1
     # One file: the page and the Python code stay inside the exe.
-    return run([python, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onefile", "--name", "Urban Reign",
+    return run([python, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onefile", "--name", "Urban Reign", "--copy-metadata", "pywebview",
                 "--icon", LAUNCHER / "ui" / "img" / "icon.ico",
                 "--add-data", f"{LAUNCHER / 'ui'};ui", "--distpath", WORK / "dist", "--workpath", WORK / "work",
                 "--specpath", WORK, LAUNCHER / "urban_launcher.py"])
