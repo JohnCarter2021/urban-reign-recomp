@@ -52,7 +52,12 @@ details.
 [Urban Reign Enhanced HD Textures Pack](https://gbatemp.net/threads/urban-reign-enhanced-hd-textures-pack-updated.665094/)
 and extract it into the `game\textures` folder (it should end up as `game\textures\SLUS-21209\replacements`).
 
-**Mods:** put PCSX2 `.pnach` patches in `game\mods` and turn them on in the **Mods** tab.
+**Mods:** put mods (a folder with a `.dll`) or PCSX2 `.pnach` patches in `game\mods` and turn them on in the
+**Mods** tab; their options are in the in-game menu (**F2**). To make your own: the [mod kit](modsdk/README.md).
+The **CoopTool** mod comes with the game (`mods/CoopTool`): Multiplayer with up to 8 fighters (up to 4 humans plus
+bots, every one for himself or custom teams, Free Mode stages) and Free Mode missions with up to 4 players (number
+of enemies, objective, each fighter's character / AI / strength / health, optional partner, enhanced camera with
+L3 / R3). Its **How to use** tab explains each part.
 
 ### Requirements
 
@@ -77,6 +82,11 @@ Controllers work out of the box. Buttons, controllers per player and the multita
 | F11 | Fullscreen |
 | F3 | FPS counter |
 | F5 / F9 | Quick save / load state |
+| F2 | In-game menu: MODS / PATCHES |
+| F4 | Reload the mods (.pnach) |
+
+**Recording with OBS:** use *Window Capture* with **Capture Method: Windows 10 (1903 and up)** (the default
+"Automatic"/BitBlt shows a blank window), or *Display Capture*.
 
 ## Build from source
 
