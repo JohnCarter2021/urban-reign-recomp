@@ -4,22 +4,32 @@
 #   stay in game/, as in the Windows ZIP.
 # - .deb: /usr/bin/urban-reign; the game is in /usr/lib/urban-reign and the player's files go to
 #   ~/.local/share/urban-reign (URBAN_USER_DIR), with game/, mods/ and textures/ there.
-# With no disc image configured yet it asks for one (zenity or kdialog) and writes it to config.ini [Game] Iso.
-# Arguments go to the game (e.g. --iso <file>).
+# Without arguments it opens the launcher (launcher/, when the release has it and python3 is there; the launcher itself
+# says what to install when GTK/WebKit is missing). --game, or any argument, starts the game directly; with no disc
+# image configured yet it then asks for one (zenity or kdialog) and writes it to config.ini [Game] Iso. Arguments go to
+# the game (e.g. --iso <file>).
 set -e
 
 HERE=$(dirname "$(readlink -f "$0")")
 if [ -x "$HERE/game/urban" ]; then
     GAME="$HERE/game"
+    LAUNCHER="$HERE/launcher"
     DATA="$GAME"
     DISCS="$GAME" # an .iso next to urban (the game looks there, as urban.exe does in the Windows release)
 else
     GAME=/usr/lib/urban-reign
+    LAUNCHER=/usr/lib/urban-reign/launcher
     DATA="${XDG_DATA_HOME:-$HOME/.local/share}/urban-reign"
     DISCS="$DATA/game"
     export URBAN_USER_DIR="$DATA"
     mkdir -p "$DISCS" "$DATA/mods" "$DATA/textures/SLUS-21209"
 fi
+
+if [ $# -eq 0 ] && [ -f "$LAUNCHER/urban_launcher.py" ] && command -v python3 >/dev/null 2>&1; then
+    export URBAN_GAME_DIR="$GAME"
+    exec python3 "$LAUNCHER/urban_launcher.py"
+fi
+[ "${1:-}" = "--game" ] && shift
 
 configured_iso() {
     if [ -f "$DATA/config.ini" ]; then
@@ -46,6 +56,7 @@ pick_disc() {
 }
 
 if [ $# -eq 0 ] && [ -z "${URBAN_ISO:-}" ] && ! has_disc; then
+    # (here without the launcher: started with --game, or the release has no launcher / no python3)
     iso=$(pick_disc)
     if [ -n "$iso" ] && [ -f "$iso" ]; then
         # config.ini with its defaults first (the game writes it and exits), then its Iso= line.

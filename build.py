@@ -131,6 +131,21 @@ def launcher(args=()):
     return run([sys.executable, ROOT / "tools" / "release.py", "launcher"])
 
 
+LAUNCHER_LIB = BUILD.parent / "launcher-linux" / "lib"
+LAUNCHER_PACKAGES = ["pywebview==6.2.1", "importlib_resources==6.4.5"]  # pure Python; importlib_resources: Python 3.8 (6.4 is the last for it)
+
+
+def launcher_from_source(args=()):
+    """Linux: the launcher from launcher/ in pywebview's GTK window (PyGObject and WebKitGTK from the system; pywebview
+    installed into build/launcher-linux/lib the first time)."""
+    if not (LAUNCHER_LIB / "webview").is_dir():
+        if run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-q", "--target", LAUNCHER_LIB,
+                *LAUNCHER_PACKAGES]):
+            return 1
+    env = dict(os.environ, PYTHONPATH=str(LAUNCHER_LIB))
+    return run([sys.executable, ROOT / "launcher" / "urban_launcher.py", *args], env=env)
+
+
 def release(args=()):
     if not WINDOWS:
         return run([sys.executable, ROOT / "tools" / "linux" / "release.py", *args])
@@ -172,6 +187,8 @@ UTILITIES = [
 if WINDOWS and (ROOT / "launcher" / "urban_launcher.py").exists():
     UTILITIES += [("Launcher: run it from the source", lambda: run([sys.executable, ROOT / "launcher" / "urban_launcher.py"])),
                   ("Launcher: build Urban Reign.exe", lambda: launcher())]
+elif (ROOT / "launcher" / "urban_launcher.py").exists():
+    UTILITIES += [("Launcher: run it from the source (GTK window)", lambda: launcher_from_source())]
 
 
 def menu():

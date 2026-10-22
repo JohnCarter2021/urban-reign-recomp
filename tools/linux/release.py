@@ -6,9 +6,15 @@ libstdc++, glibc 2.31; they need 2.30), so they run on current distros and on St
     python tools/linux/release.py               build in the container, then package
     python tools/linux/release.py --no-build    package what build/release-linux already has
 
+The launcher (launcher/, thiagordsfx's own closed-source program, not in the repository) goes in when it is there: its
+Python sources and page, run by the system's python3 in pywebview's GTK window (PyGObject and WebKitGTK from the
+system), with pywebview and its pure-Python dependencies in launcher/lib. Without it, urban-reign starts the game.
+
 Output in build/release:
   UrbanReignPC-<version>-linux-x86_64.tar.gz   portable folder, as the Windows ZIP:
-      urban-reign                                the start script (asks for the disc image the first time)
+      urban-reign                                the start script: the launcher, or the game (--game; asks for the
+                                                 disc image the first time)
+      launcher/                                  the launcher (when launcher/ is there)
       install-shortcut.sh                        adds Urban Reign to the applications menu
       game/                                      urban, libpcsx2gs.so, the libraries it brings, resources/, mods/ (CoopTool
                                                  and ExampleMod, off until switched on), textures/
@@ -29,6 +35,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+LAUNCHER = ROOT / "launcher"
+LAUNCHER_PACKAGES = ["pywebview==6.2.1", "importlib_resources==6.4.5"]  # pure Python; importlib_resources: Python 3.8 (6.4 is the last for it)
 IMAGE = "registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest"
 OUT = ROOT / "build" / "release-linux"
 BIN = OUT / "build" / "bin"
@@ -62,8 +70,11 @@ GitHub:  https://github.com/thiagordsfx
 YouTube: https://www.youtube.com/@thiagordsfx
 
 EN
-- Run "urban-reign" (from a file manager or a terminal). The first time it asks for your own Urban Reign disc image
-  (USA, SLUS-21209, .iso); the game is not included. Or put the .iso in game/.
+- Run "urban-reign" (from a file manager or a terminal): it opens the launcher, where you pick your own Urban Reign
+  disc image (USA, SLUS-21209, .iso; the game is not included) and set graphics, controllers and mods, then PLAY.
+  The launcher needs Python 3 with GTK and WebKit, already there on most desktops; otherwise it says what to install
+  (Debian/Ubuntu: sudo apt install python3-gi gir1.2-webkit2-4.1). "urban-reign --game" starts the game directly
+  (the first time it asks for the disc image); or put the .iso in game/.
 - ./install-shortcut.sh adds Urban Reign to the applications menu (this folder stays where it is).
 - Settings: game/config.ini ([Video] InternalResolution, AspectRatio, Renderer...) and game/controls.ini (controllers,
   PCSX2 format). Both are written with comments the first time the game runs.
@@ -76,11 +87,14 @@ EN
 - Needs a 64-bit Linux with glibc 2.30 or newer (Ubuntu 20.04+, Debian 11+, Fedora, Arch, SteamOS...), a Vulkan
   graphics driver and a CPU with SSE4.1. The game window is X11 (XWayland on Wayland desktops).
 - Steam Deck: in Desktop Mode run urban-reign once to pick the disc image; then add urban-reign to Steam as a
-  non-Steam game.
+  non-Steam game with the launch option --game.
 
 PT
-- Rode o "urban-reign" (pelo gerenciador de arquivos ou terminal). Na primeira vez ele pede a sua imagem do Urban Reign
-  (EUA, SLUS-21209, .iso); o jogo não vem junto. Ou coloque o .iso em game/.
+- Rode o "urban-reign" (pelo gerenciador de arquivos ou terminal): ele abre o launcher, onde você escolhe a sua imagem
+  do Urban Reign (EUA, SLUS-21209, .iso; o jogo não vem junto) e configura gráficos, controles e mods, e depois JOGAR.
+  O launcher precisa de Python 3 com GTK e WebKit, que a maioria dos desktops já tem; se faltar, ele diz o que instalar
+  (Debian/Ubuntu: sudo apt install python3-gi gir1.2-webkit2-4.1). "urban-reign --game" abre o jogo direto (na
+  primeira vez pede a imagem do disco); ou coloque o .iso em game/.
 - ./install-shortcut.sh coloca o Urban Reign no menu de aplicativos (esta pasta fica onde está).
 - Configurações: game/config.ini ([Video] InternalResolution, AspectRatio, Renderer...) e game/controls.ini (controles,
   formato do PCSX2). Os dois são criados com comentários na primeira vez que o jogo roda.
@@ -93,7 +107,7 @@ PT
 - Precisa de Linux 64 bits com glibc 2.30 ou mais nova (Ubuntu 20.04+, Debian 11+, Fedora, Arch, SteamOS...), driver
   de vídeo com Vulkan e processador com SSE4.1. A janela do jogo é X11 (XWayland em desktops Wayland).
 - Steam Deck: no Modo Desktop rode o urban-reign uma vez para escolher a imagem; depois adicione o urban-reign na Steam
-  como jogo não-Steam.
+  como jogo não-Steam, com a opção de inicialização --game.
 
 The .deb (Debian, Ubuntu, Mint...) installs the same files in /usr/lib/urban-reign and keeps your files in
 ~/.local/share/urban-reign (put the .iso in its game/ folder, or pick it the first time; config.ini and controls.ini are
@@ -114,6 +128,8 @@ THIRD_PARTY = """Third-party software in this release
   others), SPIRV-Tools and SPIRV-Headers (Apache-2.0 / MIT)
 - libpng (libpng16.so.16): libpng license, http://www.libpng.org
 - raylib and its GLFW: zlib license; Dear ImGui: MIT
+- Launcher (launcher/): (c) thiagordsfx, all rights reserved; it runs on pywebview (BSD-3-Clause), bottle (MIT),
+  proxy_tools (MIT), typing_extensions (PSF-2.0) and importlib_resources (Apache-2.0), in launcher/lib
 """
 
 MODS_NOTE = "Mods go here, one folder each (the mod's .so and mod.json); switch them on in config.ini [Mods] Dlls=<Name>.\n" \
@@ -207,6 +223,31 @@ def stage_game(game: Path):
         print(f"  {game.name}/mods/{folder.name}/")
 
 
+def launcher_lib() -> Path:
+    """pywebview and its pure-Python dependencies, installed once into build/release-linux/launcher-lib."""
+    lib = OUT / "launcher-lib"
+    if not (lib / "webview").is_dir():
+        shutil.rmtree(lib, ignore_errors=True)
+        if run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-q", "--no-compile",
+                "--target", lib, *LAUNCHER_PACKAGES]):
+            sys.exit("pip could not get pywebview for the launcher")
+    return lib
+
+
+def stage_launcher(target: Path) -> bool:
+    """The launcher's sources, page and lib/ into target (False when launcher/ is not here)."""
+    if not (LAUNCHER / "urban_launcher.py").exists():
+        return False
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "bin")
+    target.mkdir(parents=True)
+    shutil.copy2(LAUNCHER / "urban_launcher.py", target / "urban_launcher.py")
+    shutil.copytree(LAUNCHER / "core", target / "core", ignore=ignore)
+    shutil.copytree(LAUNCHER / "ui", target / "ui", ignore=ignore)
+    shutil.copytree(launcher_lib(), target / "lib", ignore=ignore)
+    print("  launcher/ (with pywebview in launcher/lib)")
+    return True
+
+
 def make_tarball() -> Path:
     staging = RELEASE / "linux-staging"
     shutil.rmtree(staging, ignore_errors=True)
@@ -217,6 +258,8 @@ def make_tarball() -> Path:
     (game / "textures").mkdir()
     (game / "textures" / "README.txt").write_text(TEXTURES_NOTE, encoding="utf-8")
     (game / "textures" / "SLUS-21209").mkdir()
+    if not stage_launcher(out / "launcher"):
+        print("No launcher (launcher/ is not here): urban-reign starts the game.")
     shutil.copy2(HERE / "urban-reign.sh", out / "urban-reign")
     (out / "install-shortcut.sh").write_text(INSTALL_SHORTCUT, encoding="utf-8")
     shutil.copy2(HERE / "urban-reign.png", out / "urban-reign.png")
@@ -247,6 +290,7 @@ def make_deb() -> Path:
     staging = RELEASE / "deb-staging"
     shutil.rmtree(staging, ignore_errors=True)
     stage_game(staging / "usr" / "lib" / "urban-reign")
+    stage_launcher(staging / "usr" / "lib" / "urban-reign" / "launcher")
     (staging / "usr" / "bin").mkdir(parents=True)
     shutil.copy2(HERE / "urban-reign.sh", staging / "usr" / "bin" / "urban-reign")
     applications = staging / "usr" / "share" / "applications"
@@ -268,7 +312,7 @@ def make_deb() -> Path:
         "Maintainer: thiagordsfx <https://github.com/thiagordsfx>\n"
         f"Installed-Size: {size_kb}\n"
         f"Depends: {DEB_DEPENDS}\n"
-        "Recommends: zenity | kdialog\n"
+        "Recommends: python3, python3-gi, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, zenity | kdialog\n"
         "Section: games\n"
         "Priority: optional\n"
         "Homepage: https://github.com/thiagordsfx/urban-reign-recomp\n"

@@ -223,3 +223,28 @@ the mod is stopped`) and the game goes on.
 
 The release ships them in `game/mods` (`.tar.gz`) or `/usr/lib/urban-reign/mods` (`.deb`, where the player's own mods
 go in `~/.local/share/urban-reign/mods` and are looked for first). `modsdk/README.md` explains building a mod for Linux.
+
+## The launcher on Linux
+
+The launcher (`launcher/`, thiagordsfx's own closed-source program, not in this repository) runs on Linux too: the same
+page in **pywebview's GTK window** (WebKitGTK through PyGObject, from the system), started from its Python sources with
+the system's `python3`. Nothing of it is in the public repository; what the repository does with it:
+
+- `build.py` (Linux, when `launcher/` is there): "Launcher: run it from the source (GTK window)" installs pywebview
+  6.2.1 into `build/launcher-linux/lib` (`pip --target`; pure Python) and starts it against `build/linux/bin`.
+- `tools/linux/release.py` puts it in both packages when `launcher/` is there: its sources and page in `launcher/`
+  (`/usr/lib/urban-reign/launcher` in the .deb), pywebview, bottle, proxy_tools, typing_extensions and
+  importlib_resources 6.4 (Python 3.8) in `launcher/lib`. The .deb recommends `python3`, `python3-gi` and
+  `gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0`.
+- `urban-reign` without arguments opens the launcher (with `URBAN_GAME_DIR` and, for the .deb, `URBAN_USER_DIR`); `--game`
+  (or any argument) starts the game directly, as before. Without GTK/WebKit the launcher says which packages to install
+  and offers the game without it (the counterpart of the missing WebView2 on Windows).
+
+What the launcher needed on Linux (in `launcher/`): the game and SDL library names (`urban`, `libSDL3.so.0`, mods'
+`.so`), the player's folder apart from the game's (`URBAN_USER_DIR`: config.ini, controls.ini, memcards, states, logs,
+the player's mods listed before the installed ones), `xdg-open` for folders, the system report from `/etc/os-release`,
+the graphics driver and the session instead of the registry, the language from the locale, WebKit2 4.1 or 4.0, and
+texts naming the Linux files. Checked here (GNOME on Wayland, WebKitGTK 2.52): from the extracted `.tar.gz`,
+`./urban-reign` opens the launcher, the disc image is verified, PLAY saves the settings and starts the game, the
+launcher comes back when it closes; the controllers tab loads the shipped SDL3; with the .deb's layout (a read-only
+game folder) its files go to the player's folder and the Mods tab lists the installed CoopTool.
