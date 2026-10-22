@@ -330,3 +330,8 @@ bool Pcsx2Config::GSOptions::ShouldDump(u64 draw, int frame) const
 		   (drawOffset >= 0) && ((SaveDrawCount < 0) || (drawOffset < SaveDrawCount)) && (drawOffset % SaveDrawBy == 0) &&
 		   (frameOffset >= 0) && ((SaveFrameCount < 0) || (frameOffset < SaveFrameCount)) && (frameOffset % SaveFrameBy == 0);
 }
+
+std::optional<bool> Pcsx2Config::GSOptions::TriStateToOptionalBoolean(int value)
+{
+	return (value < 0) ? std::optional<bool>(std::nullopt) : std::optional<bool>((value != 0));
+}

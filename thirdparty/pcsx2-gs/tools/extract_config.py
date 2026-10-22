@@ -40,6 +40,7 @@ wanted = [
     'const char* Pcsx2Config::GSOptions::GetRendererName(',
     'bool Pcsx2Config::GSOptions::RestartOptionsAreEqual(',
     'bool Pcsx2Config::GSOptions::ShouldDump(',
+    'std::optional<bool> Pcsx2Config::GSOptions::TriStateToOptionalBoolean(',  # the Vulkan device
 ]
 # Name tables: every "const char* Pcsx2Config::GSOptions::xxx[...] = {" definition.
 tables = []

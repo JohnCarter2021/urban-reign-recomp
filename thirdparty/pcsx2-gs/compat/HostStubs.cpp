@@ -10,6 +10,7 @@
 #include "GS/GSDump.h"
 #include "GS/GSPng.h"
 #include "GS/Renderers/HW/GSTextureReplacements.h"
+#include "BuildVersion.h"
 #include "GSDumpReplayer.h"
 #include "Host.h"
 #include "ImGui/FullscreenUI.h"
@@ -22,19 +23,25 @@
 #include "VMManager.h"
 #include "common/CrashHandler.h"
 #include "common/Image.h"
+#include "common/StringUtil.h"
 #include "imgui.h"
 #include "imgui_freetype.h"
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdarg>
 #include <cmath>
 #include <filesystem>
 #include <cstdio>
 #include <mutex>
 #include <string>
 
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#else
+#include <sys/mman.h>
+#endif
 
 namespace
 {
@@ -265,6 +272,20 @@ void pcsx2gs::SetVerticalFrequency(double hz)
 }
 
 // --- configuration and emulator state the GS reads ---
+// BuildVersion.cpp of PCSX2 comes from its git checkout (svnrev.h); the Vulkan device reports this version to the
+// driver. The PCSX2 commit thirdparty/pcsx2 was copied from (thirdparty/README.md).
+namespace BuildVersion
+{
+    const char *GitTag = "2954ebe";
+    bool GitTaggedCommit = false;
+    int GitTagHi = 0;
+    int GitTagMid = 0;
+    int GitTagLo = 0;
+    const char *GitRev = "2954ebe";
+    const char *GitHash = "2954ebe6965669219f1bbd256e958fbd8f83a85d";
+    const char *GitDate = "2026-10-11";
+}
+
 Pcsx2Config EmuConfig;
 bool FMVstarted = false;
 alignas(16) cpuRegistersPack _cpuRegistersPack;
@@ -308,8 +329,16 @@ const char *ReportInterlaceMode()
 // The software renderer's JIT code lives in PCSX2's code reservation; here only that part (64 MB) exists.
 u8 *SysMemory::GetCodePtr(size_t offset)
 {
+#if defined(_WIN32)
     static u8 *base = static_cast<u8 *>(
         VirtualAlloc(nullptr, HostMemoryMap::SWrecSize, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+#else
+    static u8 *base = []
+    {
+        void *memory = mmap(nullptr, HostMemoryMap::SWrecSize, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return memory == MAP_FAILED ? nullptr : static_cast<u8 *>(memory);
+    }();
+#endif
     if (!base || offset < HostMemoryMap::SWrecOffset || offset > HostMemoryMap::SWrecOffset + HostMemoryMap::SWrecSize)
         return nullptr;
     return base + (offset - HostMemoryMap::SWrecOffset);
@@ -340,6 +369,16 @@ void Host::ReportErrorAsync(const std::string_view title, const std::string_view
 {
     std::fprintf(stderr, "[pcsx2-gs] %.*s: %.*s\n", static_cast<int>(title.size()), title.data(), static_cast<int>(message.size()),
                  message.data());
+}
+
+// As PCSX2's pcsx2/Host.cpp (the Vulkan device reports errors through it).
+void Host::ReportFormattedErrorAsync(const std::string_view title, const char *format, ...)
+{
+    std::va_list ap;
+    va_start(ap, format);
+    std::string message(StringUtil::StdStringFromFormatV(format, ap));
+    va_end(ap);
+    ReportErrorAsync(title, message);
 }
 
 void Host::RunOnCPUThread(std::function<void()> function, bool block)
@@ -498,7 +537,8 @@ bool ImGuiManager::Initialize()
         io.DisplayFramebufferScale = ImVec2(1, 1);
         // The OSD font: PCSX2's Roboto when resources/fonts has it, else ImGui's built-in one.
         const std::string roboto = EmuFolders::Resources + "/fonts/Roboto-Regular.ttf";
-        g_osdFont = GetFileAttributesA(roboto.c_str()) != INVALID_FILE_ATTRIBUTES ? io.Fonts->AddFontFromFileTTF(roboto.c_str(), 20.0f) : nullptr;
+        std::error_code error;
+        g_osdFont = std::filesystem::exists(roboto, error) ? io.Fonts->AddFontFromFileTTF(roboto.c_str(), 20.0f) : nullptr;
         if (!g_osdFont)
             g_osdFont = io.Fonts->AddFontDefault();
     }

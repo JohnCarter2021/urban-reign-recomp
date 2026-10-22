@@ -67,9 +67,10 @@ if(URBAN_BUILD_MODS AND WIN32)
     add_dependencies(urban CoopTool)
 endif()
 
-# PCSX2's GS as pcsx2gs.dll (docs/GS_PCSX2.md): built with urban, loaded by it when [Video] Renderer=pcsx2.
-option(URBAN_PCSX2_GS "Build PCSX2's GS (pcsx2gs.dll)" ON)
-if(URBAN_PCSX2_GS AND WIN32)
+# PCSX2's GS as pcsx2gs.dll (docs/GS_PCSX2.md): built with urban, loaded by it when [Video] Renderer=pcsx2. On Linux
+# libpcsx2gs.so on Vulkan (docs/LINUX.md).
+option(URBAN_PCSX2_GS "Build PCSX2's GS (pcsx2gs.dll / libpcsx2gs.so)" ON)
+if(URBAN_PCSX2_GS AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     add_subdirectory(thirdparty/pcsx2-gs EXCLUDE_FROM_ALL)
     add_dependencies(urban pcsx2gs)
     target_link_libraries(ps2_runtime PRIVATE pcsx2gs_api)

@@ -10,7 +10,7 @@ Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, r
 | 0 | Environment: dependencies (`tools/linux/install_deps.sh`), line endings | done |
 | 1 | Portable CMake: Clang/GCC flags, `build/linux`, SDL3 and raylib (X11) on Linux; the runtime and the generated code compile | done |
 | 2 | Host code: `main.cpp` (game defaults outside `_WIN32`, stack, crash report), mod loader with `dlopen`; boots to the menus with the software GS | done |
-| 3 | PCSX2's GS on Vulkan (`libpcsx2gs.so`): Vulkan renderer, `common/Linux`, shaders, PNG through libpng, `Bridge.cpp` | |
+| 3 | PCSX2's GS on Vulkan (`libpcsx2gs.so`): Vulkan renderer, `common/Linux`, shaders, PNG through libpng, `Bridge.cpp`; device test | done |
 | 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it | |
 | 5 | `build.py` on Linux | |
 | 6 | Mods (CoopTool, ExampleMod) as `.so` | |
@@ -99,3 +99,31 @@ software GS's timing or Linux causes it is open. So on Linux MTVU is on by defau
   (more CPU, same behaviour). A futex/`std::atomic::wait` version would match Windows.
 - `host_vsync.cpp` (the emulated vblank locked to the monitor's, D3DKMT) has no Linux version: the clock runs free.
 - Thread priorities (`ThreadPriority.h`) are not raised on Linux (it needs `CAP_SYS_NICE`).
+
+## PCSX2's GS on Vulkan (phase 3)
+
+`thirdparty/pcsx2-gs` builds `build/linux/bin/libpcsx2gs.so` (with `urban`, or `ninja -C build/linux pcsx2gs`), next
+to `resources/` (the shaders) and `shadercache_pcsx2/`. Same C interface as `pcsx2gs.dll` (`include/pcsx2gs_api.h`);
+on Linux `Pcsx2GsOpenParams::hwnd` is the X11 window (XID) to render into.
+
+- **Sources** (`thirdparty/README.md`): the Vulkan device of the same PCSX2 commit, `common/Linux`, the Vulkan headers
+  and VulkanMemoryAllocator. `compat/LnxMisc.cpp` is PCSX2's `LnxMisc.cpp` without dbus/XInput2.
+- **Shaders**: `resources/shaders/vulkan` (GLSL), compiled at run time by shaderc's shared library, loaded with dlopen:
+  `libshaderc_shared.so.1`, or `libshaderc.so.1` (Debian/Ubuntu; the one local change in a PCSX2 file). Cache:
+  `shadercache_pcsx2/vulkan_shaders.bin` and `vulkan_pipelines.bin`. The shipped cache (`shadercache/`) is DX11 only:
+  the first run on Linux compiles the shaders as the game uses them.
+- **HD textures**: PNG through libpng (PCSX2's own handlers, `compat/PngLibpng.inl`, written by
+  `tools/make_loaders.py`; Windows keeps WIC, `compat/PngLoader.inl` picks); DDS as on Windows.
+- **Bridge** (`compat/Bridge.cpp`): `GSRendererType::VK` with `WindowInfo::Type::X11`; the library opens its own X11
+  connection on the GS thread (never shares GLFW's). `PS2X_PRESENT_STATS` (DXGI frame statistics) is Windows only.
+- **Library hygiene**: built with `-fvisibility=hidden`, linked with `--no-undefined` (a missing host stub is a link
+  error), `--exclude-libs,ALL` and `-Bsymbolic`: it exports only `pcsx2gs_get_api` and `pcsx2gs_set_aspect`, so its
+  ImGui/fmt never bind to urban's.
+- **New host functions** the Vulkan device needs: `Host::ReportFormattedErrorAsync` (`compat/HostStubs.cpp`) and
+  `GSOptions::TriStateToOptionalBoolean` (`tools/extract_config.py` → `compat/Pcsx2ConfigGS.cpp`).
+- Also fixed: the post-build copy of the shader cache broke on paths with spaces (`VERBATIM`).
+
+**Device test**: `build/linux/bin/pcsx2_gs_test_x11 [scale] [seconds] [snapshot.bmp]` opens an X11 window, loads
+`libpcsx2gs.so` through the C interface as urban will, and presents test/GSTest.cpp's scene (blue background, red and
+green sprites). GTX 1660 SUPER, driver 610: correct image at 2x (1280x896), 75 presents a second with FIFO vsync
+(the monitor's rate).

@@ -10,3 +10,12 @@
 the headers from Ninja's dependency log of a full build (`ninja -t deps`), plus the license files and the whole
 `3rdparty/cpuinfo` (it is built with its own CMakeLists). The folder layout is PCSX2's, so a newer PCSX2 can be
 copied over the same paths. `pcsx2-gs/tools/make_loaders.py` and `extract_config.py` read a full PCSX2 checkout.
+
+For the Linux build (`docs/LINUX.md`) the same commit's Vulkan renderer was added: `pcsx2/GS/Renderers/Vulkan/`,
+`common/Linux/LnxHostSys.cpp` and `LnxThreads.cpp`, `3rdparty/vulkan/` (Vulkan headers and VulkanMemoryAllocator, with
+their licenses), `pcsx2/BuildVersion.h` and `common/CocoaTools.h` (included by the Vulkan files; the version values are
+in `pcsx2-gs/compat/HostStubs.cpp`). `common/Linux/LnxMisc.cpp` is replaced by `pcsx2-gs/compat/LnxMisc.cpp` (no
+dbus/XInput2).
+
+One local change in a PCSX2 file: `pcsx2/GS/Renderers/Vulkan/VKShaderCache.cpp` also tries `libshaderc.so.1` when
+`libshaderc_shared.so.1` does not load (Debian/Ubuntu's name for shaderc's shared library); marked "Urban Reign port".

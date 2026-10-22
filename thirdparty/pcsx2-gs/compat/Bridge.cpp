@@ -1,11 +1,18 @@
-// pcsx2gs.dll: the C interface of include/pcsx2gs_api.h over PCSX2's GS (docs/GS_PCSX2.md, phase 2).
+// pcsx2gs.dll / libpcsx2gs.so: the C interface of include/pcsx2gs_api.h over PCSX2's GS (docs/GS_PCSX2.md, phase 2).
+// DX11 into a Win32 window on Windows; Vulkan into an X11 window elsewhere (docs/LINUX.md).
 #include "pcsx2gs_api.h"
 #include "pcsx2gs_host.h"
 
 #include "Config.h"
 #include "GS/GS.h"
 #include "GS/Renderers/Common/GSRenderer.h"
+#if defined(_WIN32)
 #include "GS/Renderers/DX11/GSDevice11.h"
+#define PCSX2GS_EXPORT extern "C" __declspec(dllexport)
+#else
+#include <X11/Xlib.h>
+#define PCSX2GS_EXPORT extern "C" __attribute__((visibility("default")))
+#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -23,6 +30,17 @@ namespace
     alignas(16) u8 g_regs[0x2000] = {};
     bool g_open = false;
     WindowInfo g_window;
+
+#if defined(_WIN32)
+    constexpr GSRendererType kRenderer = GSRendererType::DX11;
+    constexpr const char *kRendererName = "DX11";
+#else
+    constexpr GSRendererType kRenderer = GSRendererType::VK;
+    constexpr const char *kRendererName = "Vulkan";
+    // The X11 connection the Vulkan surface is created on: the library's own, opened on the GS thread, so that it is
+    // never shared with the game window's (GLFW, main thread). The window itself is the port's child window (its XID).
+    Display *g_display = nullptr;
+#endif
 
     // Urban Reign's entry in PCSX2's GameIndex.yaml (SLUS-21209): alignSprite 1, textureInsideRT 1,
     // halfPixelOffset 4, nativeScaling 2, getSkipCount GSC_UrbanReign. PCSX2 applies them through its game database;
@@ -102,15 +120,28 @@ namespace
         if (g_open || !params || !params->hwnd)
             return 0;
         g_window = {};
+#if defined(_WIN32)
         g_window.type = WindowInfo::Type::Win32;
         g_window.window_handle = params->hwnd;
+#else
+        if (!g_display)
+            g_display = XOpenDisplay(nullptr);
+        if (!g_display)
+        {
+            std::fprintf(stderr, "[pcsx2-gs] cannot open the X11 display\n");
+            return 0;
+        }
+        g_window.type = WindowInfo::Type::X11;
+        g_window.display_connection = g_display;
+        g_window.window_handle = params->hwnd;
+#endif
         g_window.surface_width = std::max(1u, params->width);
         g_window.surface_height = std::max(1u, params->height);
         pcsx2gs::SetRenderWindow(g_window);
         pcsx2gs::SetFolders(params->resources ? params->resources : "", params->cache ? params->cache : "");
 
         Pcsx2Config::GSOptions options;
-        options.Renderer = GSRendererType::DX11;
+        options.Renderer = kRenderer;
         options.UpscaleMultiplier = std::max(1.0f, params->scale);
         options.AspectRatio = params->stretch ? AspectRatioType::Stretch : AspectRatioType::R4_3;
         ApplyGameFixes(options);
@@ -123,7 +154,7 @@ namespace
         const GSVSyncMode vsync = params->vsync == 1u ? GSVSyncMode::FIFO
                                   : params->vsync == 2u ? GSVSyncMode::Mailbox
                                                         : GSVSyncMode::Disabled;
-        if (!GSopen(options, GSRendererType::DX11, g_regs, vsync, false))
+        if (!GSopen(options, kRenderer, g_regs, vsync, false))
         {
             std::fprintf(stderr, "[pcsx2-gs] GSopen failed\n");
             return 0;
@@ -131,7 +162,7 @@ namespace
         g_open = true;
         int w = 0, h = 0;
         GSgetInternalResolution(&w, &h);
-        std::fprintf(stderr, "[pcsx2-gs] DX11, scale %.0f (%dx%d), window %ux%u, options: %s\n", options.UpscaleMultiplier, w, h,
+        std::fprintf(stderr, "[pcsx2-gs] %s, scale %.0f (%dx%d), window %ux%u, options: %s\n", kRendererName, options.UpscaleMultiplier, w, h,
                      g_window.surface_width, g_window.surface_height, params->options ? params->options : "");
         return 1;
     }
@@ -142,6 +173,13 @@ namespace
             return;
         GSclose();
         g_open = false;
+#if !defined(_WIN32)
+        if (g_display)
+        {
+            XCloseDisplay(g_display);
+            g_display = nullptr;
+        }
+#endif
     }
 
     void Gif(const uint8_t *data, uint32_t qwc)
@@ -155,6 +193,7 @@ namespace
     // with mailbox vsync (tools/present_stats.py).
     void WritePresentStats()
     {
+#if defined(_WIN32)
         static std::FILE *file = []() -> std::FILE *
         {
             const char *path = std::getenv("PS2X_PRESENT_STATS");
@@ -176,6 +215,7 @@ namespace
             stats = {};
         std::fprintf(file, "%lld,%u,%u,%u,%u,%lld\n", static_cast<long long>(now.QuadPart), last, stats.PresentCount,
                      stats.PresentRefreshCount, stats.SyncRefreshCount, static_cast<long long>(stats.SyncQPCTime.QuadPart));
+#endif
     }
 
     void Vsync(const Pcsx2GsPrivRegs *regs)
@@ -302,14 +342,14 @@ namespace
     const Pcsx2GsApi g_api = {PCSX2GS_API_VERSION, Open, Close, Gif, Vsync, Reset, ReadFifo, Resize, SetScale, LoadVram, SaveVram, ReadLocal, pcsx2gs::SetOsd, Snapshot, pcsx2gs::SetMenu, pcsx2gs::MenuInput};
 }
 
-extern "C" __declspec(dllexport) const Pcsx2GsApi *pcsx2gs_get_api(uint32_t version)
+PCSX2GS_EXPORT const Pcsx2GsApi *pcsx2gs_get_api(uint32_t version)
 {
     return version == PCSX2GS_API_VERSION ? &g_api : nullptr;
 }
 
 // The aspect ratio while the game runs (0 = 4:3, 1 = 16:9, 2 = fill the window), read at every present: the port uses
 // it to follow the game's own 4:3 / 16:9 option. Exported on its own so that the API table above stays the same.
-extern "C" __declspec(dllexport) void pcsx2gs_set_aspect(uint32_t mode)
+PCSX2GS_EXPORT void pcsx2gs_set_aspect(uint32_t mode)
 {
     EmuConfig.CurrentAspectRatio = mode == 2u ? AspectRatioType::Stretch : mode == 1u ? AspectRatioType::R16_9 : AspectRatioType::R4_3;
 }

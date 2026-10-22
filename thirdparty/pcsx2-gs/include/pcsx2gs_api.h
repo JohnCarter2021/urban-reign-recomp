@@ -1,6 +1,7 @@
-// C interface of pcsx2gs.dll: PCSX2's GS (hardware renderer) as the port's GS back end (docs/GS_PCSX2.md, phase 2).
-// urban.exe loads the DLL at run time (LoadLibrary + pcsx2gs_get_api), so it starts without it and its own ImGui
-// never meets the copy inside the DLL. Every call except pcsx2gs_get_api must come from one thread (the GS thread).
+// C interface of pcsx2gs.dll (libpcsx2gs.so on Linux): PCSX2's GS (hardware renderer) as the port's GS back end
+// (docs/GS_PCSX2.md, phase 2; docs/LINUX.md). urban.exe loads the library at run time (LoadLibrary / dlopen +
+// pcsx2gs_get_api), so it starts without it and its own ImGui never meets the copy inside the library. Every call except
+// pcsx2gs_get_api must come from one thread (the GS thread).
 #pragma once
 
 #include <stdint.h>
@@ -13,7 +14,7 @@ extern "C" {
 
 typedef struct Pcsx2GsOpenParams
 {
-    void *hwnd;             // window to render into (a child of the game window)
+    void *hwnd;             // window to render into (a child of the game window): HWND on Windows, X11 Window (XID) on Linux
     uint32_t width;         // its client size
     uint32_t height;
     float scale;            // internal resolution multiplier (1 = native)
@@ -110,7 +111,7 @@ enum
 typedef struct Pcsx2GsApi
 {
     uint32_t version;
-    // Creates the device and the renderer (DX11). Returns 0 on failure.
+    // Creates the device and the renderer (DX11 on Windows, Vulkan on Linux). Returns 0 on failure.
     int (*open)(const Pcsx2GsOpenParams *params);
     void (*close)(void);
     // GIF data in stream order (all paths merged), whole qwords; a tag may continue in the next call.
