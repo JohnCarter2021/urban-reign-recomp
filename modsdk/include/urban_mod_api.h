@@ -1,7 +1,8 @@
 /* Urban Reign PC port: mod API (C, version 2).
  *
  * A mod is one DLL in its own folder:   game\mods\<Name>\<Name>.dll  +  mod.json  (name, version, author, description)
- * Players switch it on in the launcher (Mods tab; config.ini [Mods] Dlls=<Name>;...). urban.exe loads it at start
+ * (Linux: game/mods/<Name>/<Name>.so.) Players switch it on in the launcher (Mods tab; config.ini [Mods]
+ * Dlls=<Name>;...). urban.exe loads it at start
  * and calls urban_mod_init with the host table below. Its options appear as a tab of the in-game menu (F2,
  * "MODS / PATCHES").
  *

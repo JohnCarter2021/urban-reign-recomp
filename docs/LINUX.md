@@ -13,7 +13,7 @@ Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, r
 | 3 | PCSX2's GS on Vulkan (`libpcsx2gs.so`): Vulkan renderer, `common/Linux`, shaders, PNG through libpng, `Bridge.cpp`; device test | done |
 | 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it; fights at 60 | done |
 | 5 | `build.py` on Linux (build, play, generate, bench); release: `.tar.gz` and `.deb` built in the Steam Runtime | done |
-| 6 | Mods (CoopTool, ExampleMod) as `.so` | |
+| 6 | Mods (CoopTool, ExampleMod) as `.so`, in the release; mod crash guard checked | done |
 | 7 | Validation: boot, menus, fights, save states, HD textures, audio, controllers | |
 
 ## Setting up
@@ -208,3 +208,18 @@ Checked on 2026-10-22 (version 1.3.0: `.tar.gz` 29.5 MB, `.deb` 20.1 MB):
   `libshaderc_shared.so.1`, libpng and SDL3 (`/proc/<pid>/maps`); fight4_heavy at 60.0 frames/s, fight8_heli at 59.7
   (the g++ build's game thread 75% there, Clang's 67%).
 - Not checked yet: a Steam Deck (Gaming Mode runs games in gamescope; the GS's X11 child window there is untested).
+
+## Mods (phase 6)
+
+`mods/CoopTool` and `modsdk/example` build on Linux too, into `build/linux/bin/mods/<Name>/<Name>.so` with their
+`mod.json` (`LIBRARY_OUTPUT_DIRECTORY`; no `lib` prefix). CoopTool is built with hidden visibility and `-Bsymbolic`:
+it exports only `urban_mod_init` and its own code never binds to the symbols urban exports (`-rdynamic`). Switched on as
+on Windows, by name: `config.ini [Mods] Dlls=CoopTool;ExampleMod` (no launcher on Linux yet).
+
+Checked: both load (`[mods] CoopTool loaded (0 patch option(s), own tab, frame code)`, `ExampleMod loaded (2 patch
+option(s)...)`) and F2 shows their tabs (CoopTool's Multiplayer / Free Mode / How to use) drawn by the PCSX2 GS on
+Vulkan. A test mod that writes through a null pointer in its frame callback is stopped (`crashed in its frame code;
+the mod is stopped`) and the game goes on.
+
+The release ships them in `game/mods` (`.tar.gz`) or `/usr/lib/urban-reign/mods` (`.deb`, where the player's own mods
+go in `~/.local/share/urban-reign/mods` and are looked for first). `modsdk/README.md` explains building a mod for Linux.

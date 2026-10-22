@@ -51,9 +51,10 @@ set(PS2X_ENABLE_SCCACHE OFF CACHE BOOL "" FORCE)
 add_subdirectory(runtime EXCLUDE_FROM_ALL)
 add_subdirectory(src)
 
-# The mod kit's example (modsdk/): ExampleMod.dll in build/port/bin/mods/ExampleMod, to try the mod API.
-option(URBAN_BUILD_MOD_EXAMPLE "Build modsdk/example (ExampleMod.dll)" ON)
-if(URBAN_BUILD_MOD_EXAMPLE AND WIN32)
+# The mod kit's example (modsdk/): ExampleMod.dll (ExampleMod.so on Linux) in build/port/bin/mods/ExampleMod, to try
+# the mod API.
+option(URBAN_BUILD_MOD_EXAMPLE "Build modsdk/example (ExampleMod.dll / ExampleMod.so)" ON)
+if(URBAN_BUILD_MOD_EXAMPLE AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     set(URBAN_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/bin/mods")
     add_subdirectory(modsdk/example)
     add_dependencies(urban ExampleMod)
@@ -61,7 +62,7 @@ endif()
 
 # The mods that ship with the game (mods/): built into build/port/bin/mods/<Name>.
 option(URBAN_BUILD_MODS "Build the mods in mods/ (CoopTool)" ON)
-if(URBAN_BUILD_MODS AND WIN32)
+if(URBAN_BUILD_MODS AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     set(URBAN_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/bin/mods")
     add_subdirectory(mods/CoopTool)
     add_dependencies(urban CoopTool)

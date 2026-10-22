@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 
-// DLL mods (modsdk/include/urban_mod_api.h): game\mods\<Name>\<Name>.dll, switched on by config.ini [Mods] Dlls.
+// DLL mods (modsdk/include/urban_mod_api.h): game\mods\<Name>\<Name>.dll (<Name>.so on Linux), switched on by
+// config.ini [Mods] Dlls.
 // Each loaded mod gets a tab in the F2 menu ("MODS / PATCHES") with its patch groups and its own options.
 namespace urban::modloader
 {

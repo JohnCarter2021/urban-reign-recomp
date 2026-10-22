@@ -4,8 +4,8 @@
  * - Its own tab: reads P1's and P2's health live and has a button that refills it once.
  * - A frame callback that counts frames (runs on the game thread at every vblank).
  *
- * Build: see modsdk/README.md. Install: game\mods\ExampleMod\ExampleMod.dll + mod.json, then switch it on in the
- * launcher's Mods tab.
+ * Build: see modsdk/README.md. Install: game\mods\ExampleMod\ExampleMod.dll + mod.json (ExampleMod.so on Linux),
+ * then switch it on in the launcher's Mods tab (config.ini [Mods] Dlls=ExampleMod).
  */
 #include "urban_mod_api.h"
 

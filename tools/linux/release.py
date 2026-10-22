@@ -10,7 +10,8 @@ Output in build/release:
   UrbanReignPC-<version>-linux-x86_64.tar.gz   portable folder, as the Windows ZIP:
       urban-reign                                the start script (asks for the disc image the first time)
       install-shortcut.sh                        adds Urban Reign to the applications menu
-      game/                                      urban, libpcsx2gs.so, the libraries it brings, resources/, mods/, textures/
+      game/                                      urban, libpcsx2gs.so, the libraries it brings, resources/, mods/ (CoopTool
+                                                 and ExampleMod, off until switched on), textures/
       README.txt, LICENSE.txt, THIRD-PARTY.txt, urban-reign.png
   urban-reign_<version>_amd64.deb               /usr/lib/urban-reign, /usr/bin/urban-reign, menu entry and icon; the
                                                 player's files in ~/.local/share/urban-reign
@@ -67,6 +68,10 @@ EN
 - Settings: game/config.ini ([Video] InternalResolution, AspectRatio, Renderer...) and game/controls.ini (controllers,
   PCSX2 format). Both are written with comments the first time the game runs.
 - HD textures: put a PCSX2 texture pack in game/textures/SLUS-21209 (the folder with "replacements").
+- Mods: each mod is a folder in game/mods; switch them on in game/config.ini, [Mods] Dlls=CoopTool (several:
+  Dlls=CoopTool;ExampleMod); their options are in the in-game menu (F2). CoopTool comes with it: Multiplayer with up
+  to 8 fighters (up to 8 humans) and Free Mode missions with up to 4 players. For 6 to 8 players switch the multitap on
+  in both ports (game/controls.ini, [Pad] MultitapPort1 = true).
 - In game: F11 fullscreen, F3 FPS counter, F5/F9 quick save/load state, F2 in-game menu.
 - Needs a 64-bit Linux with glibc 2.30 or newer (Ubuntu 20.04+, Debian 11+, Fedora, Arch, SteamOS...), a Vulkan
   graphics driver and a CPU with SSE4.1. The game window is X11 (XWayland on Wayland desktops).
@@ -80,6 +85,10 @@ PT
 - Configurações: game/config.ini ([Video] InternalResolution, AspectRatio, Renderer...) e game/controls.ini (controles,
   formato do PCSX2). Os dois são criados com comentários na primeira vez que o jogo roda.
 - Texturas HD: coloque um pacote do PCSX2 em game/textures/SLUS-21209 (a pasta com "replacements").
+- Mods: cada mod é uma pasta em game/mods; ligue no game/config.ini, [Mods] Dlls=CoopTool (vários:
+  Dlls=CoopTool;ExampleMod); as opções ficam no menu do jogo (F2). O CoopTool já vem junto: Multiplayer com até 8
+  lutadores (até 8 humanos) e missões do Free Mode com até 4 jogadores. Para 6 a 8 jogadores ligue o multitap nas duas
+  portas (game/controls.ini, [Pad] MultitapPort1 = true).
 - No jogo: F11 tela cheia, F3 contador de FPS, F5/F9 salvar/carregar estado rápido, F2 menu do jogo.
 - Precisa de Linux 64 bits com glibc 2.30 ou mais nova (Ubuntu 20.04+, Debian 11+, Fedora, Arch, SteamOS...), driver
   de vídeo com Vulkan e processador com SSE4.1. A janela do jogo é X11 (XWayland em desktops Wayland).
@@ -87,9 +96,11 @@ PT
   como jogo não-Steam.
 
 The .deb (Debian, Ubuntu, Mint...) installs the same files in /usr/lib/urban-reign and keeps your files in
-~/.local/share/urban-reign (put the .iso in its game/ folder, or pick it the first time).
+~/.local/share/urban-reign (put the .iso in its game/ folder, or pick it the first time; config.ini and controls.ini are
+there too, and your own mods go in its mods/ folder).
 O .deb (Debian, Ubuntu, Mint...) instala os mesmos arquivos em /usr/lib/urban-reign e guarda os seus arquivos em
-~/.local/share/urban-reign (coloque o .iso na pasta game/ de lá, ou escolha na primeira vez).
+~/.local/share/urban-reign (coloque o .iso na pasta game/ de lá, ou escolha na primeira vez; o config.ini e o
+controls.ini ficam lá também, e os seus próprios mods vão na pasta mods/ de lá).
 
 Fan project, not affiliated with Bandai Namco. / Projeto de fãs, sem ligação com a Bandai Namco.
 """
@@ -184,6 +195,16 @@ def stage_game(game: Path):
         copy_executable(source, game / name)
         print("  " + str((game / name).relative_to(game.parent)))
     shutil.copytree(BIN / "resources", game / "resources")
+    # The mods built with the game (mods/ and the mod kit's example): off until the player switches them on.
+    (game / "mods").mkdir()
+    for folder in sorted((BIN / "mods").glob("*/")) if (BIN / "mods").is_dir() else []:
+        library = folder / f"{folder.name}.so"
+        if not library.exists() or not (folder / "mod.json").exists():
+            continue
+        (game / "mods" / folder.name).mkdir()
+        copy_executable(library, game / "mods" / folder.name / library.name)
+        shutil.copy2(folder / "mod.json", game / "mods" / folder.name / "mod.json")
+        print(f"  {game.name}/mods/{folder.name}/")
 
 
 def make_tarball() -> Path:
@@ -192,9 +213,9 @@ def make_tarball() -> Path:
     out = staging / NAME
     game = out / "game"
     stage_game(game)
-    for folder, note in (("mods", MODS_NOTE), ("textures", TEXTURES_NOTE)):
-        (game / folder).mkdir()
-        (game / folder / "README.txt").write_text(note, encoding="utf-8")
+    (game / "mods" / "README.txt").write_text(MODS_NOTE, encoding="utf-8")
+    (game / "textures").mkdir()
+    (game / "textures" / "README.txt").write_text(TEXTURES_NOTE, encoding="utf-8")
     (game / "textures" / "SLUS-21209").mkdir()
     shutil.copy2(HERE / "urban-reign.sh", out / "urban-reign")
     (out / "install-shortcut.sh").write_text(INSTALL_SHORTCUT, encoding="utf-8")

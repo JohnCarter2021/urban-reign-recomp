@@ -395,8 +395,8 @@ Iso=
 [Mods]
 # PCSX2 patches (.pnach) from the "mods" folder next to urban.exe that are on, separated by ";".
 Enabled=
-# DLL mods that are on (folders of the "mods" folder: mods\<Name>\<Name>.dll), separated by ";". Their options are
-# in the in-game menu (F2).
+# DLL mods that are on (folders of the "mods" folder: mods\<Name>\<Name>.dll, <Name>.so on Linux), separated by ";".
+# Their options are in the in-game menu (F2).
 Dlls=
 
 [Video]
