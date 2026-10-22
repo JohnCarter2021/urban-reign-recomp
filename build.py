@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Urban Reign PC: build and run.
 
     python build.py              numbered menu
@@ -163,7 +164,7 @@ UTILITIES = [
     ("Configure again (CMake)", lambda: configure()),
     ("Build only the PCSX2 GS (pcsx2gs.dll / libpcsx2gs.so)", lambda: build("pcsx2gs")),
     ("Benchmark a savestate (bench/states)", lambda: bench()),
-    ("Open the game folder (build/port/bin)", open_game_folder),
+    (f"Open the game folder ({BIN.relative_to(ROOT).as_posix()})", open_game_folder),
     ("Make a release: folder + ZIP (build/release)" if WINDOWS else "Make a release: .tar.gz + .deb (build/release)",
      lambda: release()),
 ]
