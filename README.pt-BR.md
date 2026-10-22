@@ -4,9 +4,10 @@
 
 [English](README.md) · **Português (Brasil)**
 
-**Urban Reign (PS2) rodando nativo no Windows: 60 FPS, alta resolução, texturas HD, até 8 jogadores.**
+**Urban Reign (PS2) rodando nativo no Windows e no Linux: 60 FPS, alta resolução, texturas HD, até 8 jogadores.**
 
 ![Plataforma](https://img.shields.io/badge/plataforma-Windows%20x64-0078D6?logo=windows&logoColor=white)
+![Plataforma](https://img.shields.io/badge/plataforma-Linux%20x86--64-FCC624?logo=linux&logoColor=black)
 ![Versão](https://img.shields.io/badge/vers%C3%A3o-1.3.0-d9261c)
 ![Status](https://img.shields.io/badge/status-beta-yellowgreen)
 ![Baseado em](https://img.shields.io/badge/baseado%20em-PS2Recomp-8A2BE2)
@@ -25,8 +26,9 @@
 ## O que é isso?
 
 Um port do *Urban Reign* para PC feito por **recompilação estática**: o código do PS2 foi traduzido para C++ e
-compilado como um programa de Windows, em vez de ser emulado. Os gráficos usam o renderizador do PCSX2, então dá para
-usar resolução interna alta, filtros de textura e pacotes de texturas HD.
+compilado como um programa de Windows e de Linux, em vez de ser emulado. Os gráficos usam o renderizador do PCSX2
+(DirectX 11 no Windows, Vulkan no Linux), então dá para usar resolução interna alta, filtros de textura e pacotes de
+texturas HD.
 
 - 60 FPS (progressive scan), inclusive nas lutas de 8
 - Widescreen de verdade (16:9, a câmera mostra mais do cenário) ou o 4:3 original
@@ -44,6 +46,8 @@ ver os detalhes.
 
 ## Baixar e jogar
 
+### Windows
+
 1. Baixe o ZIP da [**versão mais recente**](../../releases/latest) e extraia em qualquer pasta.
 2. Abra o **`Urban Reign.exe`**.
 3. Na aba **Jogo**, escolha a sua imagem do Urban Reign (`.iso`).
@@ -60,10 +64,25 @@ bots, cada um por si ou times personalizados, fases do Free Mode) e missões do 
 de inimigos, objetivo, personagem / IA / força / vida de cada lutador, parceiro opcional, enhanced camera com
 L3 / R3). A aba **Como usar** dele explica cada parte.
 
+### Linux
+
+Na [**versão mais recente**](../../releases/latest), escolha um dos dois:
+
+- **`.deb`** (Debian, Ubuntu, Mint...): `sudo apt install ./urban-reign_1.3.0_amd64.deb` e abra **Urban Reign** no
+  menu de aplicativos. As configurações, os saves e os seus mods ficam em `~/.local/share/urban-reign` (as texturas
+  HD vão em `~/.local/share/urban-reign/textures/SLUS-21209`).
+- **`.tar.gz`** (qualquer distribuição): extraia e rode o **`urban-reign`**; tudo fica na própria pasta, como no ZIP do
+  Windows (`./install-shortcut.sh` coloca no menu).
+
+Os dois abrem o mesmo launcher do Windows (escolha a `.iso` na aba **Jogo** e aperte **JOGAR**). O launcher usa o GTK
+com WebKit do sistema; se faltar, ele diz o que instalar (`sudo apt install python3-gi gir1.2-webkit2-4.1`) e
+`urban-reign --game` abre o jogo direto. Detalhes no [guia do Linux](docs/LINUX.md).
+
 ### Requisitos
 
-- Windows 10 ou 11, 64 bits
-- Placa de vídeo com DirectX 11
+- **Windows:** Windows 10 ou 11, 64 bits, e placa de vídeo com DirectX 11
+- **Linux:** 64 bits com glibc 2.30 ou mais nova (Ubuntu 20.04+, Debian 11+, Fedora, Arch...), driver de vídeo com
+  Vulkan; a janela é X11 (XWayland em desktops Wayland)
 - Processador com SSE4.1 (qualquer PC dos últimos ~12 anos)
 
 ## Controles
@@ -103,6 +122,16 @@ python build.py
 
 O menu guia você: o **Passo 1** gera o código do jogo a partir do seu disco, o **Passo 2** compila (na primeira vez
 leva mais de uma hora) e o **Passo 3** abre o jogo.
+
+**No Linux** (Clang; o código do jogo compila em poucos minutos):
+
+```sh
+sh tools/linux/install_deps.sh   # apt, dnf ou pacman (usa sudo)
+./build.py
+```
+
+Os pacotes `.tar.gz` e `.deb` saem de `./build.py release` (precisa de podman ou docker). Tudo sobre o Linux:
+[`docs/LINUX.md`](docs/LINUX.md).
 
 ➡ **Todo o resto** (estrutura do repositório, arquivos de configuração, como funciona, ferramentas de depuração,
 créditos completos) está no [**guia avançado**](docs/ADVANCED.pt-BR.md).

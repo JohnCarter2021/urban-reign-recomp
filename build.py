@@ -132,7 +132,8 @@ def launcher(args=()):
 
 
 LAUNCHER_LIB = BUILD.parent / "launcher-linux" / "lib"
-LAUNCHER_PACKAGES = ["pywebview==6.2.1", "importlib_resources==6.4.5"]  # pure Python; importlib_resources: Python 3.8 (6.4 is the last for it)
+LAUNCHER_PACKAGES = ["pywebview==6.2.1", "importlib_resources==6.4.5", "typing_extensions==4.13.2"]  # pure Python; the last
+# importlib_resources and typing_extensions that still run on Python 3.8 (Ubuntu 20.04)
 
 
 def launcher_from_source(args=()):

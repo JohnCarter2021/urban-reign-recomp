@@ -1,7 +1,8 @@
-# Linux build (work in progress)
+# Linux build
 
-Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, rendering through PCSX2's GS on
-**Vulkan** (the Windows build uses DX11), in an X11 window (XWayland on a Wayland desktop).
+`urban` built natively on Linux (Clang for development, g++ 14 in the Steam Runtime for the release), rendering
+through PCSX2's GS on **Vulkan** (the Windows build uses DX11), in an X11 window (XWayland on a Wayland desktop).
+Packages: a portable `.tar.gz` and a `.deb`. Made on the `feat/linux-support` branch, one phase at a time (below).
 
 ## Status
 
@@ -14,7 +15,7 @@ Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, r
 | 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it; fights at 60 | done |
 | 5 | `build.py` on Linux (build, play, generate, bench); release: `.tar.gz` and `.deb` built in the Steam Runtime | done |
 | 6 | Mods (CoopTool, ExampleMod) as `.so`, in the release; mod crash guard checked | done |
-| 7 | Validation: boot, menus, fights, save states, HD textures, audio, controllers | |
+| 7 | Validation: clean builds, fights, save states, launcher, packages on other distros; known limits | done |
 
 ## Setting up
 
@@ -248,3 +249,36 @@ texts naming the Linux files. Checked here (GNOME on Wayland, WebKitGTK 2.52): f
 `./urban-reign` opens the launcher, the disc image is verified, PLAY saves the settings and starts the game, the
 launcher comes back when it closes; the controllers tab loads the shipped SDL3; with the .deb's layout (a read-only
 game folder) its files go to the player's folder and the Mods tab lists the installed CoopTool.
+
+## Final validation (phase 7, 2026-10-22)
+
+- **Clean development build** (empty build folder, dependencies downloaded again, Clang 19): 10,393 steps in 5 min 50 s,
+  `urban`, `libpcsx2gs.so`, SDL3 and both mods.
+- **Clean release build** (`./build.py release` with `build/release-linux` deleted: shaderc and the game in the Steam
+  Runtime container) and the packages checked as in phase 5.
+- **Frames per second** (`tools/autotest/bench_state.py`, 15 s each, with the settings the player uses: 6x internal
+  resolution, fullscreen 2560x1080, HD textures preloaded): select4 59.7, fight1v1 59.9, fight4_heavy 59.9, fight8_heli
+  59.1 (minimum 56).
+- **Save states**: F5 saved (47 MB) and F9 loaded it back while the game kept running; states saved on Windows load on
+  Linux.
+- **Played by the user**: launcher, disc image, HD textures, controls, memory card saves.
+- **Windows side of the shared code**: `src/main.cpp`, `iop_subsystem.cpp` (`WaitOnAddress`), `iop_emulator.cpp` and
+  `gs_pcsx2_backend.cpp` pass a syntax check for Windows (MinGW headers); `mod_loader.cpp` too except its unchanged
+  MSVC `__try/__except` block. `Bridge.cpp` and `HostStubs.cpp` need the Windows SDK and MSVC to check. **Build the
+  branch with MSVC before merging.**
+
+## Known limits
+
+- **Not tested**: a Steam Deck (Gaming Mode runs games in gamescope, and the GS draws into an X11 child window), a
+  Wayland-native window (the game is X11; XWayland on Wayland desktops), AMD/Intel GPUs (only NVIDIA here), the MSVC
+  build of this branch.
+- **Presentation**: immediate by default on Linux (`PS2X_PCSX2_VSYNC=0`, see phase 4); in a fullscreen window that
+  the compositor does not compose, frames may tear. `PS2X_PCSX2_VSYNC=1` in `config.ini [Runtime]` waits for the
+  monitor (FIFO) instead.
+- **The port's own renderers**: the GPU GS (`Renderer=native`) is WGL only; without `libpcsx2gs.so` the software GS is
+  a slow stand-in (2-3 images a second), with MTVU off.
+- **Not ported (Windows-only diagnostics, no effect on play)**: the vblank lock to the monitor (`host_vsync.cpp`,
+  D3DKMT), raised thread priorities, `thread_policy`, `hang_dump`, `native_profile`, `call_trace`'s hardware watch,
+  `PS2X_PRESENT_STATS`.
+- The launcher (`launcher/`, not in this repository) needs the system's PyGObject and WebKitGTK; the release brings
+  the rest.
