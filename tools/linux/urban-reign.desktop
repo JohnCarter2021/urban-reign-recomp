@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Urban Reign
+Comment=Urban Reign PC port (your own PS2 disc image, USA SLUS-21209)
+Comment[pt_BR]=Port de Urban Reign para PC (sua própria imagem do disco de PS2, EUA SLUS-21209)
+Exec=urban-reign
+Icon=urban-reign
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=urban;reign;ps2;fighting;
+StartupWMClass=Urban Reign

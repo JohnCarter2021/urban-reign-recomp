@@ -9,7 +9,8 @@
 // Each loaded mod gets a tab in the F2 menu ("MODS / PATCHES") with its patch groups and its own options.
 namespace urban::modloader
 {
-    // Loads the mods named in `dlls` ("A;B") from modsDir. rdram = the PS2's main memory (32 MB). Call after the ELF is
-    // loaded and before the game starts. Returns how many loaded.
-    size_t loadAll(const std::filesystem::path &modsDir, const std::string &dlls, const std::string &language, uint8_t *rdram);
+    // Loads the mods named in `dlls` ("A;B"), each from the first of modsDirs that has its folder. rdram = the PS2's main
+    // memory (32 MB). Call after the ELF is loaded and before the game starts. Returns how many loaded.
+    size_t loadAll(const std::vector<std::filesystem::path> &modsDirs, const std::string &dlls, const std::string &language,
+                   uint8_t *rdram);
 }

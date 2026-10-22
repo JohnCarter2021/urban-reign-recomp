@@ -1,26 +1,32 @@
 """Urban Reign PC: build and run.
 
     python build.py              numbered menu
-    python build.py build        configure (first time) and compile urban.exe
+    python build.py build        configure (first time) and compile urban.exe (urban on Linux)
     python build.py play [args]  run urban.exe (extra arguments go to it)
     python build.py generate     recompile the game code from your disc image in game/
     python build.py configure    run CMake again
     python build.py bench        measure frames/s on a savestate from bench/states
-    python build.py release      the release folder and ZIP in build/release (no disc data)
+    python build.py release      the release folder and ZIP in build/release (no disc data); on Linux the .tar.gz and
+                                 the .deb, built in the Steam Runtime container (docs/LINUX.md)
 
-Needs Python 3.10+, Visual Studio 2022 with C++ (cl, CMake and Ninja come with it; set VSROOT if it is not in the
-default folder) and your own Urban Reign (USA) disc image in game/.
+Needs Python 3.10+ and your own Urban Reign (USA) disc image in game/. Windows: Visual Studio 2022 with C++ (cl, CMake
+and Ninja come with it; set VSROOT if it is not in the default folder). Linux: Clang, CMake, Ninja and the libraries of
+tools/linux/install_deps.sh (docs/LINUX.md).
 """
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-BUILD = ROOT / "build" / "port"
+WINDOWS = os.name == "nt"
+# Windows: build/port with MSVC; Linux: build/linux with Clang (docs/LINUX.md).
+BUILD = ROOT / "build" / ("port" if WINDOWS else "linux")
 BIN = BUILD / "bin"
+EXE = "urban.exe" if WINDOWS else "urban"
 VSENV = ROOT / "tools" / "win" / "vsenv.cmd"
-JOBS = os.environ.get("URBAN_JOBS", "8")
+JOBS = os.environ.get("URBAN_JOBS", "8" if WINDOWS else str(os.cpu_count() or 8))
 
 
 def run(cmd, **kwargs):
@@ -29,11 +35,15 @@ def run(cmd, **kwargs):
 
 
 def in_vs(*cmd):
-    """Runs a command inside the Visual Studio x64 environment (tools/win/vsenv.cmd)."""
+    """Runs a command inside the Visual Studio x64 environment (tools/win/vsenv.cmd); on Linux, as it is."""
+    if not WINDOWS:
+        return run(list(cmd))
     return run(["cmd", "/c", VSENV, *cmd])
 
 
 def game_running():
+    if not WINDOWS:
+        return subprocess.run(["pgrep", "-x", EXE], capture_output=True).returncode == 0
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq urban.exe", "/NH"], capture_output=True, text=True).stdout
     return "urban.exe" in out.lower()
 
@@ -44,6 +54,12 @@ def has_generated_code():
 
 def configure(extra=()):
     args = ["cmake", "-S", ROOT, "-B", BUILD, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
+    if not WINDOWS:
+        # Clang and LLD (the generated code compiles in minutes with Clang; docs/LINUX.md). URBAN_CC/URBAN_CXX override.
+        args += [f"-DCMAKE_C_COMPILER={os.environ.get('URBAN_CC', 'clang')}",
+                 f"-DCMAKE_CXX_COMPILER={os.environ.get('URBAN_CXX', 'clang++')}"]
+        if shutil.which("ld.lld"):
+            args.append("-DCMAKE_LINKER_TYPE=LLD")
     # URBAN_DEPS: a FetchContent _deps folder already downloaded (raylib-src, ...) to reuse instead of downloading.
     deps = os.environ.get("URBAN_DEPS")
     if deps:
@@ -59,7 +75,7 @@ def build(target="urban"):
         print("The recompiled game code is missing: run the 'Generate game code' option first.")
         return 1
     if game_running():
-        print("urban.exe is running: close the game first (the link would fail).")
+        print(f"{EXE} is running: close the game first (the link would fail).")
         return 1
     if not (BUILD / "CMakeCache.txt").exists() and configure():
         return 1
@@ -67,17 +83,17 @@ def build(target="urban"):
 
 
 def play(args=()):
-    exe = BIN / "urban.exe"
+    exe = BIN / EXE
     if not exe.exists():
-        print("urban.exe not built yet: run the 'Build' option first.")
+        print(f"{EXE} not built yet: run the 'Build' option first.")
         return 1
     return run([exe, *args], cwd=BIN)
 
 
 def generate(args=()):
-    # The recompiler: the prebuilt tools/ps2_recomp.exe (not in the repository) or built from runtime/ps2xRecomp.
-    built = BUILD / "runtime" / "ps2xRecomp" / "ps2_recomp.exe"
-    if not (ROOT / "tools" / "ps2_recomp.exe").exists() and not built.exists():
+    # The recompiler: the prebuilt tools/ps2_recomp.exe (not in the repository; Windows) or built from runtime/ps2xRecomp.
+    built = BUILD / "runtime" / "ps2xRecomp" / ("ps2_recomp.exe" if WINDOWS else "ps2_recomp")
+    if not (WINDOWS and (ROOT / "tools" / "ps2_recomp.exe").exists()) and not built.exists():
         print("Building the recompiler (ps2_recomp) first.")
         if configure(["-DURBAN_BUILD_RECOMP=ON"]) or in_vs("cmake", "--build", BUILD, "--target", "ps2_recomp", "--", "-j", JOBS):
             return 1
@@ -115,6 +131,8 @@ def launcher(args=()):
 
 
 def release(args=()):
+    if not WINDOWS:
+        return run([sys.executable, ROOT / "tools" / "linux" / "release.py", *args])
     return run([sys.executable, ROOT / "tools" / "release.py"])
 
 
@@ -123,30 +141,34 @@ def has_disc_image():
 
 
 def open_game_folder():
-    if BIN.exists():
+    if not BIN.exists():
+        print("Not built yet.")
+    elif WINDOWS:
         os.startfile(BIN)
     else:
-        print("Not built yet.")
+        run(["xdg-open", BIN])
 
 
 # Building from scratch, in order.
 STEPS = [
     ("Generate the game code from your disc image (put the .iso in game/ first)", lambda: generate(),
      has_generated_code),
-    ("Build urban.exe (the first time takes over an hour)", lambda: build(), lambda: (BIN / "urban.exe").exists()),
+    (f"Build {EXE} (the first time takes over an hour on Windows, a few minutes on Linux)", lambda: build(),
+     lambda: (BIN / EXE).exists()),
     ("Play", lambda: play(), None),
 ]
 # Everything else.
 UTILITIES = [
     ("Build and play", lambda: build() or play()),
     ("Configure again (CMake)", lambda: configure()),
-    ("Build only the PCSX2 GS (pcsx2gs.dll)", lambda: build("pcsx2gs")),
+    ("Build only the PCSX2 GS (pcsx2gs.dll / libpcsx2gs.so)", lambda: build("pcsx2gs")),
     ("Benchmark a savestate (bench/states)", lambda: bench()),
     ("Open the game folder (build/port/bin)", open_game_folder),
-    ("Make a release: folder + ZIP (build/release)", lambda: release()),
+    ("Make a release: folder + ZIP (build/release)" if WINDOWS else "Make a release: .tar.gz + .deb (build/release)",
+     lambda: release()),
 ]
 # Local tools that are not part of the repository (their folder is in .gitignore).
-if (ROOT / "launcher" / "urban_launcher.py").exists():
+if WINDOWS and (ROOT / "launcher" / "urban_launcher.py").exists():
     UTILITIES += [("Launcher: run it from the source", lambda: run([sys.executable, ROOT / "launcher" / "urban_launcher.py"])),
                   ("Launcher: build Urban Reign.exe", lambda: launcher())]
 

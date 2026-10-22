@@ -132,7 +132,8 @@ else()
     # The shaderc header (the library itself is loaded at run time).
     find_path(SHADERC_INCLUDE_DIR shaderc/shaderc.h REQUIRED)
     target_include_directories(pcsx2_gs PRIVATE "${SHADERC_INCLUDE_DIR}")
-    target_link_libraries(pcsx2_gs PUBLIC PNG::PNG X11::X11)
+    # rt: shm_open (GS.cpp) is in librt before glibc 2.34 (the Steam Runtime's 2.31; tools/linux/build_release.sh).
+    target_link_libraries(pcsx2_gs PUBLIC PNG::PNG X11::X11 rt)
 endif()
 target_include_directories(pcsx2_gs INTERFACE
     "${P}" "${P}/pcsx2" "${CMAKE_CURRENT_SOURCE_DIR}/compat" "${P}/3rdparty/fmt/include")

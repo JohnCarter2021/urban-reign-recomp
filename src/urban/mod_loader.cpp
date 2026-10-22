@@ -88,6 +88,8 @@ namespace urban::modloader
 
         void saveSettings(Mod &mod) // settingsMutex held
         {
+            std::error_code error;
+            std::filesystem::create_directories(mod.settingsPath.parent_path(), error);
             std::ofstream out(mod.settingsPath, std::ios::binary | std::ios::trunc);
             for (const auto &[key, value] : mod.settings)
                 out << key << '=' << value << '\n';
@@ -382,7 +384,8 @@ namespace urban::modloader
 #endif
     }
 
-    size_t loadAll(const std::filesystem::path &modsDir, const std::string &dlls, const std::string &language, uint8_t *rdram)
+    size_t loadAll(const std::vector<std::filesystem::path> &modsDirs, const std::string &dlls, const std::string &language,
+                   uint8_t *rdram)
     {
 #if !defined(_WIN32)
         installGuardHandlers();
@@ -396,12 +399,23 @@ namespace urban::modloader
             name.erase(name.find_last_not_of(" \t") + 1);
             if (name.empty())
                 continue;
-            const std::filesystem::path folder = modsDir / name;
+            std::filesystem::path folder = modsDirs.empty() ? std::filesystem::path(name) : modsDirs.front() / name;
+            for (const std::filesystem::path &dir : modsDirs)
+            {
+                std::error_code error;
+                if (std::filesystem::is_directory(dir / name, error))
+                {
+                    folder = dir / name;
+                    break;
+                }
+            }
             const std::filesystem::path dllPath = folder / (name + kLibraryExtension);
             auto mod = std::make_unique<Mod>();
             mod->name = name;
             mod->language = language;
-            mod->settingsPath = folder / "settings.ini";
+            // The mod's options are the player's: in the first folder (the user's mods), even for a mod installed with
+            // the game in a read-only folder.
+            mod->settingsPath = (modsDirs.empty() ? folder : modsDirs.front() / name) / "settings.ini";
             {
                 std::ifstream json(folder / "mod.json");
                 std::stringstream text;

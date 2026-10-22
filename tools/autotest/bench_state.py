@@ -13,14 +13,36 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BIN = ROOT / "build" / "port" / "bin"
+WINDOWS = os.name == "nt"
+BIN = ROOT / "build" / ("port" if WINDOWS else "linux") / "bin"
 CAPTURE = ROOT / "tools" / "win" / "capture_window.ps1"
 
 
 def capture(out: Path) -> bool:
-    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CAPTURE),
-                        "-TitleEquals", "Urban Reign", "-OutFile", str(out)], capture_output=True)
+    if WINDOWS:
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CAPTURE),
+               "-TitleEquals", "Urban Reign", "-OutFile", str(out)]
+    else:
+        cmd = ["import", "-window", "Urban Reign", str(out)]  # ImageMagick (X11 / XWayland)
+    try:
+        r = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        return False
     return r.returncode == 0 and out.exists() and out.stat().st_size > 0
+
+
+def linux_thread_times(pid: int) -> dict:
+    """Linux: CPU seconds used so far by each thread name of the process (/proc)."""
+    result = {}
+    tick = os.sysconf("SC_CLK_TCK")
+    for tid in os.listdir(f"/proc/{pid}/task"):
+        try:
+            name = open(f"/proc/{pid}/task/{tid}/comm").read().strip()
+            fields = open(f"/proc/{pid}/task/{tid}/stat").read().rsplit(")", 1)[1].split()
+            result[name] = result.get(name, 0.0) + (int(fields[11]) + int(fields[12])) / tick
+        except OSError:
+            pass
+    return result
 
 
 def frame_times(path: Path):
@@ -45,7 +67,8 @@ def main():
     ap.add_argument("--env", action="append", default=[])
     ap.add_argument("--affinity", default="",
                     help="logical CPUs for the game from boot (PS2X_PROCESS_AFFINITY), e.g. 0-3 or 0,1,2,3: stands in for a smaller machine")
-    ap.add_argument("--exe", default="urban.exe", help="executable in build/port/bin (e.g. urban_avx2.exe to compare builds)")
+    ap.add_argument("--exe", default="urban.exe" if WINDOWS else "urban",
+                    help="executable in build/port/bin, build/linux/bin on Linux (e.g. urban_avx2.exe to compare builds)")
     ap.add_argument("--threads", action="store_true",
                     help="run tools/thread_usage.py over the measured window; output in <tag>/threads.txt")
     ap.add_argument("--pnach", default="none",
@@ -80,13 +103,18 @@ def main():
                 f.write("!load\n")
             load_at = time.time() - t0
         time.sleep(a.warmup)
-        if a.threads:
+        before = linux_thread_times(game.pid) if a.threads and not WINDOWS else None
+        if a.threads and WINDOWS:
             usage = subprocess.Popen(["python", str(ROOT / "tools" / "thread_usage.py"), "--process", a.exe,
                                       "--seconds", str(max(5.0, a.measure - 2.0)), "--interval", "5"],
                                      stdout=open(out / "threads.txt", "w"), stderr=subprocess.STDOUT)
         time.sleep(a.measure)
         if usage:
             usage.wait()
+        if before is not None:
+            after = linux_thread_times(game.pid)
+            rows = sorted(((after[n] - before.get(n, 0.0)) / a.measure * 100.0, n) for n in after)
+            (out / "threads.txt").write_text("".join(f"{n}: {u:.1f}%\n" for u, n in reversed(rows) if u >= 0.5))
         capture(out / "final.png")
     finally:
         game.kill()

@@ -410,7 +410,11 @@ bool GSPcsx2Backend::EnsureOpen()
         return false;
     const std::filesystem::path dir = exeDirectory();
     const std::string resources = utf8(dir / "resources");
-    const std::filesystem::path cacheDir = dir / "shadercache_pcsx2";
+    // PS2X_DATA_DIR: where the player's files are when the executable's folder is read-only (an installed copy; the
+    // port sets it from URBAN_USER_DIR): the shader cache and the HD textures go there.
+    const char *dataDirValue = std::getenv("PS2X_DATA_DIR");
+    const std::filesystem::path dataDir = (dataDirValue && *dataDirValue) ? std::filesystem::path(dataDirValue) : dir;
+    const std::filesystem::path cacheDir = dataDir / "shadercache_pcsx2";
     std::error_code ec;
     std::filesystem::create_directories(cacheDir, ec);
     const std::string cache = utf8(cacheDir);
@@ -467,14 +471,14 @@ bool GSPcsx2Backend::EnsureOpen()
             options += std::string(option.key) + "=" + value + ";";
     }
     // HD textures (PS2X_PCSX2_TEXTURES=0 turns them off): PCSX2's replacement packs, from PS2X_PCSX2_TEXTURE_DIR (the
-    // folder holding replacements/) or textures/SLUS-21209 next to urban.exe or up to three folders above it (the
-    // repository's textures/ when urban.exe runs from build/port/bin, as with game/).
+    // folder holding replacements/) or textures/SLUS-21209 in PS2X_DATA_DIR, next to urban.exe or up to three folders
+    // above it (the repository's textures/ when urban.exe runs from build/port/bin, as with game/).
     if (envInt("PS2X_PCSX2_TEXTURES", 1) != 0)
     {
         const char *textureDir = std::getenv("PS2X_PCSX2_TEXTURE_DIR");
         std::filesystem::path folder = (textureDir && *textureDir) ? std::filesystem::path(textureDir)
-                                                                 : dir / "textures" / "SLUS-21209";
-        if (!(textureDir && *textureDir))
+                                                                 : dataDir / "textures" / "SLUS-21209";
+        if (!(textureDir && *textureDir) && !std::filesystem::is_directory(folder / "replacements", ec))
         {
             std::filesystem::path base = dir;
             for (int up = 0; up < 4; ++up, base = base.parent_path())

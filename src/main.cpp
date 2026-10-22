@@ -138,6 +138,21 @@ namespace
         return std::filesystem::current_path();
     }
 
+    // Where the game writes (config.ini, controls.ini, memcards, states, game_data, the shader cache) and looks for the
+    // player's disc image, mods and HD textures: URBAN_USER_DIR when it is set (an installed copy, whose own folder is
+    // read-only: the Linux .deb sets ~/.local/share/urban-reign, docs/LINUX.md), otherwise the executable's folder (the
+    // portable layout of the Windows ZIP and the Linux .tar.gz).
+    std::filesystem::path userDirectory(const std::filesystem::path &exeDir)
+    {
+        const char *value = std::getenv("URBAN_USER_DIR");
+        if (!value || !*value)
+            return exeDir;
+        std::error_code error;
+        const std::filesystem::path dir = std::filesystem::absolute(value, error);
+        std::filesystem::create_directories(dir, error);
+        return dir;
+    }
+
 #if defined(_WIN32)
     void printStackTrace()
     {
@@ -1211,8 +1226,11 @@ int main(int argc, char *argv[])
     setDefaultThreadStack();
 #endif
     const std::filesystem::path exeDir = executableDirectory();
-    loadControlsFile(exeDir); // controls.ini, PCSX2 format (converted from the controls.ini/controles.ini of older versions)
-    loadConfigFile(exeDir / "config.ini");
+    const std::filesystem::path userDir = userDirectory(exeDir);
+    if (userDir != exeDir)
+        setDefaultEnv("PS2X_DATA_DIR", userDir.string()); // the PCSX2 GS's shader cache and HD textures (gs_pcsx2_backend.cpp)
+    loadControlsFile(userDir); // controls.ini, PCSX2 format (converted from the controls.ini/controles.ini of older versions)
+    loadConfigFile(userDir / "config.ini");
     // --write-settings: only write (or complete/convert) controls.ini and config.ini with their comments and defaults,
     // then exit. The launcher runs it before editing them for the first time.
     for (int i = 1; i < argc; ++i)
@@ -1221,7 +1239,7 @@ int main(int argc, char *argv[])
     urban::log::configureFromEnvironment();
     urban::hangdump::startFromEnvironment();
     urban::nativeprofile::startFromEnvironment();
-    urban::nativeprofile::startCaptureHotkey(exeDir); // F6: start/stop a profile capture (perfil_<n>.txt)
+    urban::nativeprofile::startCaptureHotkey(userDir); // F6: start/stop a profile capture (perfil_<n>.txt)
     urban::threadpolicy::startFromEnvironment();      // PS2X_THREAD_POLICY: cores and priority by CPU topology
 
     std::filesystem::path iso;
@@ -1252,7 +1270,7 @@ int main(int argc, char *argv[])
     }
     if (iso.empty())
     {
-        iso = urban::findDiscImage({exeDir / "game", exeDir.parent_path() / "game", exeDir.parent_path().parent_path() / "game",
+        iso = urban::findDiscImage({userDir / "game", exeDir / "game", exeDir.parent_path() / "game", exeDir.parent_path().parent_path() / "game",
                                     exeDir.parent_path().parent_path().parent_path() / "game",
                                     std::filesystem::current_path() / "game", std::filesystem::current_path()});
     }
@@ -1263,7 +1281,7 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    const std::filesystem::path cacheDir = exeDir / "game_data";
+    const std::filesystem::path cacheDir = userDir / "game_data";
     URBAN_INFO(Boot, "disc image: " << iso.string());
     const urban::DiscCheckResult disc = urban::verifyDiscAndPrepare(iso, cacheDir);
     if (!disc.ok)
@@ -1277,7 +1295,7 @@ int main(int argc, char *argv[])
     paths.elfDirectory = cacheDir;
     paths.hostRoot = cacheDir;
     paths.cdRoot = cacheDir;
-    paths.mcRoot = exeDir / "memcards" / "mc0";
+    paths.mcRoot = userDir / "memcards" / "mc0";
     // URBAN_MC_DIR=<folder>: memory cards (Mcd001.ps2) from another folder; the test drivers use a copy of the card.
     if (const char *mcDir = std::getenv("URBAN_MC_DIR"); mcDir && *mcDir)
         paths.mcRoot = std::filesystem::path(mcDir) / "mc0";
@@ -1287,7 +1305,7 @@ int main(int argc, char *argv[])
     std::filesystem::create_directories(paths.mcRoot, error);
     // URBAN_QUICK_STATE=<file>: another F5/F9 slot (the autotest driver uses its own, not the player's).
     const char *quickState = std::getenv("URBAN_QUICK_STATE");
-    ps2x::savestate::setQuickSlotPath(quickState && *quickState ? std::filesystem::path(quickState) : exeDir / "states" / "quick.state");
+    ps2x::savestate::setQuickSlotPath(quickState && *quickState ? std::filesystem::path(quickState) : userDir / "states" / "quick.state");
 
     GSThreadedBackend::SetEnabledByDefault(true);
     GSThreadedBackend::SetGpuByDefault(true);
@@ -1383,7 +1401,7 @@ int main(int argc, char *argv[])
         // PS2X_PNACH=<file>[;<file>...] (controls.ini): PCSX2 patches; patch=0 lines now, patch=1 at every vblank.
         if (ps2x::pnach::loadFromEnvironment() != 0u)
             ps2x::pnach::applyOnce(runtime.memory().getRDRAM());
-        startPnachWatch(exeDir / "config.ini");
+        startPnachWatch(userDir / "config.ini");
         // F2: the in-game menu (PCSX2's GS only), with the mods tab.
         {
             const char *language = std::getenv("URBAN_LANGUAGE");
@@ -1393,7 +1411,11 @@ int main(int argc, char *argv[])
             ps2x::menu::setEmptyText(portuguese ? "Nenhum mod ligado. Ligue os mods na aba Mods do launcher (config.ini [Mods] Dlls)."
                                                 : "No mod is on. Switch mods on in the launcher's Mods tab (config.ini [Mods] Dlls).");
             const char *dlls = std::getenv("URBAN_MOD_DLLS");
-            urban::modloader::loadAll(exeDir / "mods", dlls ? dlls : "", portuguese ? "pt" : "en", runtime.memory().getRDRAM());
+            // The player's mods first, then the ones installed with the game (the same folder in the portable layout).
+            std::vector<std::filesystem::path> modDirs{userDir / "mods"};
+            if (userDir != exeDir)
+                modDirs.push_back(exeDir / "mods");
+            urban::modloader::loadAll(modDirs, dlls ? dlls : "", portuguese ? "pt" : "en", runtime.memory().getRDRAM());
         }
         urban::aspect::install(runtime.memory().getRDRAM());
         PS2Runtime::setIoPaths(paths);

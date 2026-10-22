@@ -12,7 +12,7 @@ Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, r
 | 2 | Host code: `main.cpp` (game defaults outside `_WIN32`, stack, crash report), mod loader with `dlopen`; boots to the menus with the software GS | done |
 | 3 | PCSX2's GS on Vulkan (`libpcsx2gs.so`): Vulkan renderer, `common/Linux`, shaders, PNG through libpng, `Bridge.cpp`; device test | done |
 | 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it; fights at 60 | done |
-| 5 | `build.py` on Linux | |
+| 5 | `build.py` on Linux (build, play, generate, bench); release: `.tar.gz` and `.deb` built in the Steam Runtime | done |
 | 6 | Mods (CoopTool, ExampleMod) as `.so` | |
 | 7 | Validation: boot, menus, fights, save states, HD textures, audio, controllers | |
 
@@ -32,13 +32,18 @@ Tested on Debian 13 (GNOME on Wayland, NVIDIA GTX 1660 SUPER, driver 610). Notes
 - **Debian with backports.** The Wayland/xkbcommon and udev headers are left out on purpose: they are not needed, and
   on a system with newer libraries from backports their `-dev` packages do not install.
 
-## Building (until `build.py` knows Linux, phase 5)
+## Building
 
 ```sh
-cmake -S . -B build/linux -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_LINKER_TYPE=LLD \
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo
-ninja -C build/linux urban
+python3 build.py            # the menu, as on Windows
+python3 build.py build      # configure (Clang, Ninja, LLD; build/linux) and build urban + libpcsx2gs.so
+python3 build.py play       # run build/linux/bin/urban
+python3 build.py generate   # recompile the game code from your disc image (builds ps2_recomp first)
+python3 build.py release    # the .tar.gz and the .deb (below)
 ```
+
+By hand: `cmake -S . -B build/linux -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+-DCMAKE_LINKER_TYPE=LLD -DCMAKE_BUILD_TYPE=RelWithDebInfo && ninja -C build/linux urban`.
 
 What the CMake files do on Linux (phase 1):
 
@@ -156,3 +161,50 @@ Measured on the repository's save states (`bench/states`, saved on Windows; they
 | select4 | 59.9 (60, 59) | 37% | 21% | 22% | 19% |
 
 On Windows `fight4_heavy` runs at 60.0 with the game thread at 58.5% (docs/PROGRESS.md).
+
+## build.py, the recompiler and the release (phase 5)
+
+**build.py** picks the platform: `build/linux`, Clang + Ninja (+ LLD when there), no Visual Studio environment, `urban`,
+`pgrep`/`xdg-open`. `URBAN_CC`/`URBAN_CXX` choose other compilers, `URBAN_JOBS` the parallel jobs (default: all
+threads). `tools/autotest/bench_state.py` works too (capture with ImageMagick `import`, `--threads` from `/proc`).
+
+**Recompiler**: `ps2_recomp` builds on Linux (`-DURBAN_BUILD_RECOMP=ON`, what `build.py generate` does) and
+`tools/generate.py` uses `build/linux/runtime/ps2xRecomp/ps2_recomp` (never the Windows `.exe`). From the same disc it
+writes the same 9,881 files as the Windows one, byte for byte (line endings aside).
+
+**Player's folder** (`URBAN_USER_DIR`, `src/main.cpp`): an installed copy cannot write next to its executable. When
+`URBAN_USER_DIR` is set, config.ini, controls.ini, memcards, states, game_data, the PCSX2 GS's shader cache and HD
+textures (`PS2X_DATA_DIR`), the disc image (`<dir>/game`) and the player's mods (`<dir>/mods`, before the ones installed
+with the game; a mod's settings.ini is always written there) use it. Unset: the executable's folder, as before (the
+Windows ZIP, the Linux .tar.gz).
+
+**Release** (`python3 build.py release` = `tools/linux/release.py`; needs podman or docker):
+
+- The binaries are built in the **Steam Runtime 3 "sniper" SDK** container (`tools/linux/build_release.sh`, into
+  `build/release-linux`): glibc 2.31, **g++ 14** (the container's Clang is 11, too old for the code) with a static
+  libstdc++/libgcc. The whole generated code takes ~16 minutes there (the worst file 73 s, 1.6 GB). `librt` is linked
+  for glibc < 2.34 (`shm_open`).
+- **shaderc** is built there too: the versions PCSX2 ships (shaderc 2026.2 and its glslang/SPIRV-Headers/SPIRV-Tools
+  commits, checked by SHA-256) without PCSX2's patch (the stock C API, as Debian's), as `libshaderc_shared.so.1`.
+- Shipped with the game (found through RPATH `$ORIGIN`): `libpcsx2gs.so`, `libSDL3.so.0`, `libshaderc_shared.so.1`,
+  `libpng16.so.16`. From the system: glibc, X11 (libX11, Xrandr, Xext, Xrender), libGL, the Vulkan loader, zlib.
+- `UrbanReignPC-<version>-linux-x86_64.tar.gz`: portable, as the Windows ZIP: `urban-reign` (start script),
+  `install-shortcut.sh` (menu entry for that folder), `game/` (the binaries, `resources/`, `mods/`, `textures/`; the
+  .iso can go there too).
+- `urban-reign_<version>_amd64.deb`: `/usr/lib/urban-reign`, `/usr/bin/urban-reign`, the menu entry and icon; the
+  player's files in `~/.local/share/urban-reign`. Built with the container's `dpkg-deb`.
+- `tools/linux/urban-reign.sh` (both): with no disc image configured it asks for one with zenity or kdialog and
+  writes it to `config.ini [Game] Iso` (after `urban --write-settings` made the file).
+- The archives' modes and owners are set by `release.py` (root, 755 for binaries and scripts, 644 for the rest), not
+  read from the staging folder: on NTFS every file looks executable. The .deb is written by Python (an `ar` archive of
+  `control.tar.xz` and `data.tar.xz`), so packaging needs no Debian tools either.
+
+Checked on 2026-10-22 (version 1.3.0: `.tar.gz` 29.5 MB, `.deb` 20.1 MB):
+
+- The binaries need glibc 2.30 and no system libstdc++; `ldd` finds every library on Ubuntu 20.04 (glibc 2.31) and
+  Debian 12 (the .deb installed with `apt`, dependencies resolved, `~/.local/share/urban-reign` created by the start
+  script) and on Fedora 44 and Arch (the .tar.gz; their container images only lacked libX11, which every desktop has).
+- On this machine (GNOME/Wayland, NVIDIA): the extracted .tar.gz runs through `urban-reign` with the shipped
+  `libshaderc_shared.so.1`, libpng and SDL3 (`/proc/<pid>/maps`); fight4_heavy at 60.0 frames/s, fight8_heli at 59.7
+  (the g++ build's game thread 75% there, Clang's 67%).
+- Not checked yet: a Steam Deck (Gaming Mode runs games in gamescope; the GS's X11 child window there is untested).
