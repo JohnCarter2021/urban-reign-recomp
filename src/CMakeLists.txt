@@ -5,9 +5,22 @@
 set(URBAN_ARCH "SSE41" CACHE STRING "Instruction set of the generated code: SSE41 (default) or AVX2 (comparison only)")
 set_property(CACHE URBAN_ARCH PROPERTY STRINGS SSE41 AVX2)
 if(URBAN_ARCH STREQUAL "AVX2")
-    set(URBAN_ARCH_FLAG /arch:AVX2)
+    if(MSVC)
+        set(URBAN_ARCH_FLAG /arch:AVX2)
+    else()
+        set(URBAN_ARCH_FLAG -mavx2)
+    endif()
 else()
     set(URBAN_ARCH_FLAG "")
+endif()
+
+# Clang/GCC: flags of the generated code (game code and VU1 AOT). The top-level CMakeLists already sets the code model
+# (SSE4.1, no strict aliasing, -fwrapv, no FMA). No warnings (/W0) and, by default, no debug info: ~10k files of it make
+# the build much bigger and slower, and the function names stay in the symbol table for backtraces anyway.
+option(URBAN_GENERATED_DEBUG_INFO "Clang/GCC: debug info for the generated code" OFF)
+set(URBAN_GENERATED_FLAGS -w ${URBAN_ARCH_FLAG})
+if(NOT URBAN_GENERATED_DEBUG_INFO)
+    list(APPEND URBAN_GENERATED_FLAGS -g0)
 endif()
 
 set(URBAN_GENERATED_DIR "${CMAKE_SOURCE_DIR}/generated")
@@ -51,7 +64,8 @@ if(URBAN_GAME_CODE_LIBRARY)
     target_link_libraries(urban_game_code INTERFACE ps2_runtime)
     # The huge-function sources live in a sibling library built next to it.
     get_filename_component(URBAN_GAME_CODE_LIBRARY_DIR "${URBAN_GAME_CODE_LIBRARY}" DIRECTORY)
-    target_link_libraries(urban_game_code INTERFACE "${URBAN_GAME_CODE_LIBRARY_DIR}/urban_game_code_huge.lib")
+    target_link_libraries(urban_game_code INTERFACE
+        "${URBAN_GAME_CODE_LIBRARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}urban_game_code_huge${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     # /d2OptimizeHugeFunctions forces full optimization of functions MSVC would otherwise skip. Fine for most
     # files, but sub_001A7AE8 (~11k guest instructions, 2 MB of C++) ran over 40 minutes with it. Files above the
@@ -86,6 +100,8 @@ else()
                 set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "/d2OptimizeHugeFunctions")
             endif()
         endforeach()
+    else()
+        target_compile_options(urban_game_code_huge PRIVATE ${URBAN_GENERATED_FLAGS})
     endif()
 
     add_library(urban_game_code STATIC ${URBAN_GENERATED_SOURCES})
@@ -107,6 +123,10 @@ else()
         # can take hours with them.
         set_source_files_properties("${URBAN_GENERATED_DIR}/register_functions.cpp" PROPERTIES
             COMPILE_OPTIONS "/Od" SKIP_PRECOMPILE_HEADERS ON)
+    else()
+        target_compile_options(urban_game_code PRIVATE ${URBAN_GENERATED_FLAGS})
+        set_source_files_properties("${URBAN_GENERATED_DIR}/register_functions.cpp" PROPERTIES
+            COMPILE_OPTIONS "-O0" SKIP_PRECOMPILE_HEADERS ON)
     endif()
 endif()
 
@@ -114,12 +134,19 @@ add_executable(urban ${URBAN_HOST_SOURCES})
 target_include_directories(urban PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${URBAN_GENERATED_DIR}" "${CMAKE_SOURCE_DIR}/modsdk/include")
 target_link_libraries(urban PRIVATE urban_game_code ps2_runtime)
 
+target_compile_definitions(urban PRIVATE URBAN_ARCH_NAME="${URBAN_ARCH}")
 if(MSVC)
     target_compile_options(urban PRIVATE /fp:precise /W3 /utf-8)
-    target_compile_definitions(urban PRIVATE _CRT_SECURE_NO_WARNINGS URBAN_ARCH_NAME="${URBAN_ARCH}")
+    target_compile_definitions(urban PRIVATE _CRT_SECURE_NO_WARNINGS)
     # /FORCE:MULTIPLE: WinAPI vs raylib CloseWindow clash. Large stack: deep guest call chains run on the host stack.
     target_link_options(urban PRIVATE /FORCE:MULTIPLE /STACK:16777216 $<$<CONFIG:RelWithDebInfo>:/LTCG>)
     target_link_libraries(urban PRIVATE dbghelp winmm)
+else()
+    # The 16 MB stack of /STACK is set at run time (main.cpp). -rdynamic: function names in the crash backtraces;
+    # dl: the mods and the PCSX2 GS are loaded with dlopen.
+    find_package(Threads REQUIRED)
+    target_link_options(urban PRIVATE -rdynamic)
+    target_link_libraries(urban PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 if(WIN32)
     target_sources(urban PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/res/urban.rc")
@@ -149,6 +176,8 @@ if(URBAN_VU1_SOURCES)
         # Without /d2OptimizeHugeFunctions MSVC left the big fastBlock functions unoptimized (C4883): block 9, the vertex
         # program that dominates fights, had a 462 KB stack frame and spilled every temporary (tools/frame_scan.py).
         target_compile_options(urban_vu1_code PRIVATE /bigobj /fp:precise ${URBAN_ARCH_FLAG} /W0 /MP /d2OptimizeHugeFunctions $<$<CONFIG:RelWithDebInfo>:/Ob2>)
+    else()
+        target_compile_options(urban_vu1_code PRIVATE ${URBAN_GENERATED_FLAGS})
     endif()
 endif()
 

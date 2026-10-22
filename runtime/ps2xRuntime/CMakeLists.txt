@@ -85,10 +85,11 @@ else()
     FetchContent_MakeAvailable(raylib)
 
     # SDL3 for the controllers only (ps2_host_gamepads.cpp: PCSX2's "SDL-<n>" numbering, vibration, PlayStation
-    # controllers without Steam/DS4Windows); the window stays raylib's. Built as SDL3.dll next to the executable, which
-    # a launcher can also load to list the controllers. PS2X_SDL_INPUT=0 at run time reads GLFW's gamepads instead.
+    # controllers without Steam/DS4Windows); the window stays raylib's. Built as SDL3.dll (libSDL3.so on Linux) next to
+    # the executable, which a launcher can also load to list the controllers. PS2X_SDL_INPUT=0 at run time reads GLFW's
+    # gamepads instead.
     option(PS2X_ENABLE_SDL_INPUT "Read controllers through SDL3" ON)
-    if(PS2X_ENABLE_SDL_INPUT AND WIN32)
+    if(PS2X_ENABLE_SDL_INPUT AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
         set(SDL_SHARED ON CACHE BOOL "" FORCE)
         set(SDL_STATIC OFF CACHE BOOL "" FORCE)
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -98,6 +99,12 @@ else()
         foreach(subsystem AUDIO GPU RENDER CAMERA DIALOG TRAY POWER)
             set(SDL_${subsystem} OFF CACHE BOOL "" FORCE)
         endforeach()
+        # Only gamepads and their events are used (ps2_host_gamepads.cpp); on Linux SDL's video would also want the
+        # X11 extension headers (XScrnSaver...) and Wayland.
+        if(NOT WIN32)
+            set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
+            set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
+        endif()
         FetchContent_Declare(
             SDL3
             URL "https://github.com/libsdl-org/SDL/releases/download/release-3.4.10/SDL3-3.4.10.tar.gz"
@@ -105,7 +112,8 @@ else()
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(SDL3)
-        set_target_properties(SDL3-shared PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        set_target_properties(SDL3-shared PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+                                                     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     endif()
 
     if(PS2X_ENABLE_DEBUG_UI AND NOT PS2X_IS_ANDROID)
@@ -604,6 +612,9 @@ endif()
 
 if(WIN32)
     target_link_libraries(ps2_runtime PRIVATE opengl32 gdi32)
+elseif(NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
+    find_package(Threads REQUIRED)
+    target_link_libraries(ps2_runtime PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")

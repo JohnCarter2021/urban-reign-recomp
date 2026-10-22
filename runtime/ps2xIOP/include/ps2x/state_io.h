@@ -177,8 +177,10 @@ namespace ps2x::state
         ar.raw(&present, 1u);
         if constexpr (Ar::kLoading)
         {
+            // emplace(T{}) rather than emplace(): Clang/libstdc++ can cache is_default_constructible as false for a
+            // nested struct with member initializers (checked while its enclosing class was still incomplete).
             if (present)
-                value.emplace();
+                value.emplace(T{});
             else
                 value.reset();
         }
