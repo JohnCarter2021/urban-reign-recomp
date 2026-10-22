@@ -51,6 +51,13 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#else
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <execinfo.h>
+#include <pthread.h>
+#include <unistd.h>
 #endif
 
 // ps2_memory.cpp
@@ -96,6 +103,21 @@ namespace
         MessageBoxW(nullptr, text, L"Urban Reign", MB_OK | MB_ICONERROR);
         return false;
     }
+#else
+    // As above, with the compiler's CPU feature check; the message goes to the console.
+    bool checkCpu()
+    {
+        __builtin_cpu_init();
+        const bool sse41 = __builtin_cpu_supports("sse4.1");
+        const bool avx2 = __builtin_cpu_supports("avx2");
+        const bool needAvx2 = std::string_view(URBAN_ARCH_NAME) == "AVX2";
+        std::fprintf(stderr, "[cpu] SSE4.1 %s, AVX2 %s; build %s\n", sse41 ? "yes" : "NO", avx2 ? "yes" : "no", URBAN_ARCH_NAME);
+        const char *missing = !sse41 ? "SSE4.1" : (needAvx2 && !avx2 ? "AVX2" : nullptr);
+        if (!missing)
+            return true;
+        std::fprintf(stderr, "This processor does not support %s, which this build of Urban Reign needs.\n", missing);
+        return false;
+    }
 #endif
 
     std::filesystem::path executableDirectory()
@@ -107,6 +129,11 @@ namespace
         {
             return std::filesystem::path(buffer).parent_path();
         }
+#else
+        std::error_code error;
+        const std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe", error);
+        if (!error && !self.empty())
+            return self.parent_path();
 #endif
         return std::filesystem::current_path();
     }
@@ -165,6 +192,76 @@ namespace
                         std::fprintf(stderr, "[crash] abort on thread %lu\n", GetCurrentThreadId());
                         printStackTrace();
                         std::_Exit(3); });
+    }
+#else
+    // As the Windows reporter: the signal and a backtrace (function names through -rdynamic; addr2line -e urban for
+    // lines), then exit 3. Fatal signals of any thread; the main thread also gets an alternate stack, so a stack
+    // overflow there is reported too.
+    void printStackTrace()
+    {
+        void *frames[48];
+        const int count = backtrace(frames, 48);
+        backtrace_symbols_fd(frames, count, STDERR_FILENO);
+    }
+
+    void crashSignal(int signal, siginfo_t *info, void *)
+    {
+        char text[160];
+        const int length = std::snprintf(text, sizeof(text), "[crash] signal %d (%s) at address %p on thread %lu\n", signal,
+                                         strsignal(signal), info ? info->si_addr : nullptr,
+                                         static_cast<unsigned long>(pthread_self()));
+        if (length > 0)
+            (void)!write(STDERR_FILENO, text, static_cast<size_t>(length));
+        printStackTrace();
+        std::_Exit(3);
+    }
+
+    void installCrashReporter()
+    {
+        static std::vector<char> alternateStack(256u * 1024u);
+        stack_t stack{};
+        stack.ss_sp = alternateStack.data();
+        stack.ss_size = alternateStack.size();
+        sigaltstack(&stack, nullptr);
+        struct sigaction action{};
+        action.sa_sigaction = crashSignal;
+        action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+        sigemptyset(&action.sa_mask);
+        for (const int signal : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT})
+            sigaction(signal, &action, nullptr);
+        std::set_terminate([]()
+                           {
+                               std::fprintf(stderr, "[crash] std::terminate on thread %lu\n", static_cast<unsigned long>(pthread_self()));
+                               if (const std::exception_ptr ep = std::current_exception())
+                               {
+                                   try
+                                   {
+                                       std::rethrow_exception(ep);
+                                   }
+                                   catch (const std::exception &e)
+                                   {
+                                       std::fprintf(stderr, "[crash] exception: %s\n", e.what());
+                                   }
+                                   catch (...)
+                                   {
+                                       std::fprintf(stderr, "[crash] non-std exception\n");
+                                   }
+                               }
+                               printStackTrace();
+                               std::_Exit(3); });
+    }
+
+    // Windows links urban.exe with /STACK:16777216, which is also the default stack of every thread it creates: deep
+    // guest call chains run on the host stack (the game itself runs on a std::thread, ps2_runtime.cpp). glibc's default
+    // comes from RLIMIT_STACK (usually 8 MB); this gives the threads created from here on the same 16 MB.
+    void setDefaultThreadStack()
+    {
+        pthread_attr_t attributes;
+        if (pthread_attr_init(&attributes) != 0)
+            return;
+        if (pthread_attr_setstacksize(&attributes, 16u * 1024u * 1024u) != 0 || pthread_setattr_default_np(&attributes) != 0)
+            std::fprintf(stderr, "[boot] could not set the 16 MB default thread stack\n");
+        pthread_attr_destroy(&attributes);
     }
 #endif
 
@@ -1107,10 +1204,11 @@ MultitapPort2 = true
 
 int main(int argc, char *argv[])
 {
-#if defined(_WIN32)
     if (!checkCpu())
         return 4;
     installCrashReporter();
+#if !defined(_WIN32)
+    setDefaultThreadStack();
 #endif
     const std::filesystem::path exeDir = executableDirectory();
     loadControlsFile(exeDir); // controls.ini, PCSX2 format (converted from the controls.ini/controles.ini of older versions)
@@ -1183,10 +1281,7 @@ int main(int argc, char *argv[])
     // URBAN_MC_DIR=<folder>: memory cards (Mcd001.ps2) from another folder; the test drivers use a copy of the card.
     if (const char *mcDir = std::getenv("URBAN_MC_DIR"); mcDir && *mcDir)
         paths.mcRoot = std::filesystem::path(mcDir) / "mc0";
-#if defined(_WIN32)
-    if (!std::getenv("PS2X_GS_SHADER_CACHE_DIR"))
-        _putenv_s("PS2X_GS_SHADER_CACHE_DIR", (cacheDir / "gs_shaders").string().c_str());
-#endif
+    setDefaultEnv("PS2X_GS_SHADER_CACHE_DIR", (cacheDir / "gs_shaders").string());
     paths.cdImage = std::filesystem::absolute(iso);
     std::error_code error;
     std::filesystem::create_directories(paths.mcRoot, error);
@@ -1205,19 +1300,25 @@ int main(int argc, char *argv[])
     // (asyncvif::vblankWaitEnabled: the vblank waits for the workers, emulated time does not run ahead of real time while
     // they work) the heaviest 4-fighter map runs at ~59 FPS (45.7 synchronous) and the 4-fighter select at 60
     // (docs/PROGRESS.md §50).
+#if defined(_WIN32)
     ps2x::asyncvif::setDefaultEnabled(true);
+#else
+    // Linux (docs/LINUX.md): the port's GPU GS is WGL only, so without PCSX2's GS the software GS draws. With it MTVU
+    // stopped in the intro movie (the frame-done SIGNAL never came, game thread at 0x1298a0), so until MTVU is validated
+    // with PCSX2's GS on Vulkan it is only on by default together with that renderer. PS2X_MTVU=1/0 still decides.
+    const bool pcsx2Gs = GSPcsx2Backend::Requested();
+    GSThreadedBackend::SetGpuByDefault(false);
+    ps2x::asyncvif::setDefaultEnabled(pcsx2Gs);
+#endif
     ps2x::asyncvif::setHostPacingDefault(true);
     EeScheduler::setHostPacingDefault(true);
 
-#if defined(_WIN32)
     // Urban Reign uses libmc 2.x with the old MCSERV; the runtime's MCSERV HLE speaks the newer XMCSERV protocol and
     // reads a folder card. Default to the game's own MCMAN/MCSERV IRX over the emulated SIO2 card (Mcd001.ps2).
-    if (!std::getenv("PS2X_IOP_HLE_MCSERV"))
-        _putenv_s("PS2X_IOP_HLE_MCSERV", "0");
+    setDefaultEnv("PS2X_IOP_HLE_MCSERV", "0");
     // PADMAN reads both pad ports in one SIO2 transfer; with port 2 empty the sticky "no response" RECV1 made it drop
     // port 1 too (stuck re-sending 0x42). Report RECV1 as connected when any command of the transfer was answered.
-    if (!std::getenv("PS2X_SIO2_RECV1"))
-        _putenv_s("PS2X_SIO2_RECV1", "2");
+    setDefaultEnv("PS2X_SIO2_RECV1", "2");
     // EE cycles charged per loop iteration of the recompiled code (runtime default 32; straight-line code costs nothing).
     // The game starts each frame 15 lines (T3 H-BLANK count 510 of 525) before the vblank, with interrupts disabled while
     // it kicks the frame. At 32 that stretch cost ~300K cycles, longer than the 15 lines: the vblank fell inside it, the
@@ -1225,22 +1326,18 @@ int main(int argc, char *argv[])
     // before it; frames alternated around the vblank, two in one field and none in the next. Heliport, 4 fighters:
     // ~37 distinct images/s at "60 FPS"; at 16: ~52 at 55 (93% -> 91% speed), the other heavy map 50 -> 59 at 60, the
     // select screen 52 -> 59 (docs/PROGRESS.md §52). PS2X_EE_LOOP_CYCLES=32 restores the old timing.
-    if (!std::getenv("PS2X_EE_LOOP_CYCLES"))
-        _putenv_s("PS2X_EE_LOOP_CYCLES", "16");
+    setDefaultEnv("PS2X_EE_LOOP_CYCLES", "16");
     // The finished image stays on the GPU: the GS thread's context shares textures with the window's, so no copy to RAM
     // and back each frame (the runtime's default is still the copy). Same frame rate with 6 cores, ~20% of a core less
     // CPU, and more distinct images on smaller machines (docs/PROGRESS.md §60). The SotC port ships with it on.
     // PS2X_GS_DIRECT_PRESENT=0 restores the copy path.
-    if (!std::getenv("PS2X_GS_DIRECT_PRESENT"))
-        _putenv_s("PS2X_GS_DIRECT_PRESENT", "1");
+    setDefaultEnv("PS2X_GS_DIRECT_PRESENT", "1");
     // Both VRAM downloads of a fight are the light flare's, at the sun's screen position, once a frame: an 8x8 depth
     // block (occlusion) and up to 8x8 of a half-size color copy of the frame (0x3480, CT24; the glare's brightness).
     // The runtime defaults to asynchronous depth only; "all" also gives the color block one frame late instead of making
     // the game thread wait for the GS thread and the GPU: 8 fighters 54.8 -> 58.2 frames/s (docs/PROGRESS.md §63).
     // PS2X_GS_ASYNC_READBACK=1 keeps depth only, =0 reads both synchronously.
-    if (!std::getenv("PS2X_GS_ASYNC_READBACK"))
-        _putenv_s("PS2X_GS_ASYNC_READBACK", "all");
-#endif
+    setDefaultEnv("PS2X_GS_ASYNC_READBACK", "all");
 
     try
     {

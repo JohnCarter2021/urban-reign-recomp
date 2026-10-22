@@ -27,6 +27,10 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#include <csetjmp>
+#include <csignal>
 #endif
 
 #if defined(URBAN_HAS_GAME_MENU)
@@ -55,6 +59,8 @@ namespace urban::modloader
             std::string language;
 #if defined(_WIN32)
             HMODULE dll = nullptr;
+#else
+            void *dll = nullptr; // dlopen handle
 #endif
             UrbanModHost host{};
             std::vector<PatchGroup> shown;
@@ -209,7 +215,92 @@ namespace urban::modloader
             }
         }
 
-        // A crash inside a mod stops that mod, not the game (structured exceptions, Windows).
+        // The mod's library: mods/<Name>/<Name>.dll on Windows, mods/<Name>/<Name>.so elsewhere.
+#if defined(_WIN32)
+        constexpr const char *kLibraryExtension = ".dll";
+
+        bool openLibrary(Mod &mod, const std::filesystem::path &path)
+        {
+            mod.dll = LoadLibraryW(path.wstring().c_str());
+            if (!mod.dll)
+                std::cerr << "[mods] " << path.string() << " did not load (error " << GetLastError() << ")" << std::endl;
+            return mod.dll != nullptr;
+        }
+
+        void *librarySymbol(Mod &mod, const char *name)
+        {
+            return reinterpret_cast<void *>(GetProcAddress(mod.dll, name));
+        }
+
+        void closeLibrary(Mod &mod)
+        {
+            FreeLibrary(mod.dll);
+            mod.dll = nullptr;
+        }
+#else
+        constexpr const char *kLibraryExtension = ".so";
+
+        bool openLibrary(Mod &mod, const std::filesystem::path &path)
+        {
+            mod.dll = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+            if (!mod.dll)
+                std::cerr << "[mods] " << path.string() << " did not load (" << dlerror() << ")" << std::endl;
+            return mod.dll != nullptr;
+        }
+
+        void *librarySymbol(Mod &mod, const char *name)
+        {
+            return dlsym(mod.dll, name);
+        }
+
+        void closeLibrary(Mod &mod)
+        {
+            dlclose(mod.dll);
+            mod.dll = nullptr;
+        }
+
+        // The structured exceptions of the Windows build, with signals: while a mod's code runs, a fault on that
+        // thread jumps back to guarded(); any other fault goes to the handler that was there before (the crash
+        // report, main.cpp).
+        thread_local sigjmp_buf *t_guardJump = nullptr;
+        struct sigaction g_previousHandlers[NSIG];
+
+        void guardSignal(int signal, siginfo_t *info, void *context)
+        {
+            if (sigjmp_buf *jump = t_guardJump)
+            {
+                t_guardJump = nullptr;
+                siglongjmp(*jump, signal);
+            }
+            const struct sigaction &previous = g_previousHandlers[signal];
+            if (previous.sa_flags & SA_SIGINFO)
+                previous.sa_sigaction(signal, info, context);
+            else if (previous.sa_handler != SIG_DFL && previous.sa_handler != SIG_IGN)
+                previous.sa_handler(signal);
+            else
+            {
+                std::signal(signal, SIG_DFL);
+                std::raise(signal);
+            }
+        }
+
+        void installGuardHandlers()
+        {
+            static const bool installed = []
+            {
+                struct sigaction action{};
+                action.sa_sigaction = guardSignal;
+                action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
+                sigemptyset(&action.sa_mask);
+                for (const int signal : {SIGSEGV, SIGBUS, SIGILL, SIGFPE})
+                    sigaction(signal, &action, &g_previousHandlers[signal]);
+                return true;
+            }();
+            (void)installed;
+        }
+#endif
+
+        // A crash inside a mod stops that mod, not the game (structured exceptions on Windows, signals elsewhere).
         template <typename Fn>
         bool guarded(Mod &mod, const char *what, Fn &&call)
         {
@@ -235,8 +326,19 @@ namespace urban::modloader
             std::cerr << "[mod " << mod.name << "] crashed in " << what << "; the mod is stopped" << std::endl;
             return false;
 #else
-            call();
-            return true;
+            sigjmp_buf jump;
+            sigjmp_buf *const outer = t_guardJump;
+            if (sigsetjmp(jump, 1) == 0)
+            {
+                t_guardJump = &jump;
+                call();
+                t_guardJump = outer;
+                return true;
+            }
+            t_guardJump = outer;
+            mod.failed = true;
+            std::cerr << "[mod " << mod.name << "] crashed in " << what << "; the mod is stopped" << std::endl;
+            return false;
 #endif
         }
 
@@ -282,7 +384,9 @@ namespace urban::modloader
 
     size_t loadAll(const std::filesystem::path &modsDir, const std::string &dlls, const std::string &language, uint8_t *rdram)
     {
-#if defined(_WIN32)
+#if !defined(_WIN32)
+        installGuardHandlers();
+#endif
         g_rdram = rdram;
         std::istringstream list(dlls);
         std::string name;
@@ -293,7 +397,7 @@ namespace urban::modloader
             if (name.empty())
                 continue;
             const std::filesystem::path folder = modsDir / name;
-            const std::filesystem::path dllPath = folder / (name + ".dll");
+            const std::filesystem::path dllPath = folder / (name + kLibraryExtension);
             auto mod = std::make_unique<Mod>();
             mod->name = name;
             mod->language = language;
@@ -307,17 +411,13 @@ namespace urban::modloader
                     mod->description = jsonString(text.str(), "description");
             }
             loadSettings(*mod);
-            mod->dll = LoadLibraryW(dllPath.wstring().c_str());
-            if (!mod->dll)
-            {
-                std::cerr << "[mods] " << dllPath.string() << " did not load (error " << GetLastError() << ")" << std::endl;
+            if (!openLibrary(*mod, dllPath))
                 continue;
-            }
-            const auto init = reinterpret_cast<int (*)(const UrbanModHost *)>(GetProcAddress(mod->dll, "urban_mod_init"));
+            const auto init = reinterpret_cast<int (*)(const UrbanModHost *)>(librarySymbol(*mod, "urban_mod_init"));
             if (!init)
             {
                 std::cerr << "[mods] " << name << ": no urban_mod_init export" << std::endl;
-                FreeLibrary(mod->dll);
+                closeLibrary(*mod);
                 continue;
             }
             mod->host = UrbanModHost{URBAN_MOD_API_VERSION, mod->name.c_str(), mod->language.c_str(), hostLog, hostRead, hostWrite,
@@ -331,7 +431,7 @@ namespace urban::modloader
             if (!kept)
             {
                 std::cerr << "[mods] " << name << " declined to load" << std::endl;
-                FreeLibrary(mod->dll);
+                closeLibrary(*mod);
                 continue;
             }
             std::cerr << "[mods] " << name << " loaded (" << mod->shown.size() << " patch option(s)"
@@ -351,12 +451,5 @@ namespace urban::modloader
             g_mods.push_back(std::move(mod));
         }
         return g_mods.size();
-#else
-        (void)modsDir;
-        (void)dlls;
-        (void)language;
-        (void)rdram;
-        return 0u;
-#endif
     }
 }

@@ -47,7 +47,9 @@ namespace ThreadNaming
         pthread_setname_np(name.data());
 
 #elif defined(__linux__)
-        pthread_setname_np(pthread_self(), name.data());
+        // A string_view is not NUL-terminated, and Linux refuses names longer than 15 characters (ERANGE).
+        const std::string shortName(name.substr(0, 15));
+        pthread_setname_np(pthread_self(), shortName.c_str());
 #endif
     }
 }
