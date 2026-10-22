@@ -12,9 +12,10 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32) && __has_include("pcsx2gs_api.h")
+#if (defined(_WIN32) || defined(__linux__)) && __has_include("pcsx2gs_api.h")
 #include "pcsx2gs_api.h"
 #define PS2X_HAS_PCSX2_GS 1
+#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -22,6 +23,15 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#define PS2X_PCSX2GS_CALL __cdecl
+#else
+// Linux (docs/LINUX.md): libpcsx2gs.so (Vulkan) renders into an X11 child window of the game window.
+#include <X11/Xlib.h>
+#include <dlfcn.h>
+#define PS2X_PCSX2GS_CALL
+// raylib's GLFW is built with X11; on Linux raylib's GetWindowHandle() is the GLFWwindow*, this gives its X11 window.
+extern "C" unsigned long glfwGetX11Window(void *window);
+#endif
 #endif
 
 #if PS2X_HAS_PCSX2_GS
@@ -30,19 +40,32 @@ static_assert(sizeof(GSVSyncRegs) == sizeof(Pcsx2GsPrivRegs), "GSVSyncRegs must 
 namespace
 {
     const Pcsx2GsApi *g_api = nullptr;
-    void(__cdecl *g_setAspect)(uint32_t) = nullptr; // pcsx2gs_set_aspect, when the DLL has it
+    void(PS2X_PCSX2GS_CALL *g_setAspect)(uint32_t) = nullptr; // pcsx2gs_set_aspect, when the library has it
     const std::chrono::steady_clock::time_point g_processStart = std::chrono::steady_clock::now();
+#if defined(_WIN32)
     HWND g_parent = nullptr;
     HWND g_child = nullptr;
+#else
+    // The main thread's own X11 connection (GLFW's stays GLFW's); the library opens another one on the GS thread.
+    Display *g_display = nullptr;
+    Window g_parent = 0;
+    Window g_child = 0;
+#endif
     std::atomic<uint64_t> g_presents{0u};
     std::atomic<uint32_t> g_clientWidth{0u};
     std::atomic<uint32_t> g_clientHeight{0u};
 
     std::filesystem::path exeDirectory()
     {
+#if defined(_WIN32)
         wchar_t path[MAX_PATH] = {};
         const DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
         return length ? std::filesystem::path(path).parent_path() : std::filesystem::current_path();
+#else
+        std::error_code error;
+        const std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe", error);
+        return error ? std::filesystem::current_path() : self.parent_path();
+#endif
     }
 
     std::string utf8(const std::filesystem::path &path)
@@ -57,6 +80,7 @@ namespace
         return (value && *value) ? std::atoi(value) : fallback;
     }
 
+#if defined(_WIN32)
     // The child window only shows the GS output: mouse input goes through to the game window (HTTRANSPARENT works
     // because both belong to the main thread, which also pumps this window's messages).
     LRESULT CALLBACK ChildProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -71,6 +95,16 @@ namespace
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
     }
+#else
+    // The game window's client size (X11).
+    void parentSize(uint32_t &width, uint32_t &height)
+    {
+        XWindowAttributes attributes{};
+        XGetWindowAttributes(g_display, g_parent, &attributes);
+        width = static_cast<uint32_t>(std::max(1, attributes.width));
+        height = static_cast<uint32_t>(std::max(1, attributes.height));
+    }
+#endif
 
     // PS2X_GIF_DUMP=<start seconds>:<fields>:<file>: the GIF stream sent to PCSX2's GS, from the first vsync after
     // <start seconds> of run time, for <fields> fields. Records (little endian): 'M' u32 size + GS local memory at the
@@ -184,6 +218,7 @@ bool GSPcsx2Backend::Requested()
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (name != "pcsx2")
             return false;
+#if defined(_WIN32)
         const std::filesystem::path dll = exeDirectory() / "pcsx2gs.dll";
         HMODULE module = LoadLibraryW(dll.c_str());
         if (!module)
@@ -192,16 +227,28 @@ bool GSPcsx2Backend::Requested()
                          dll.string().c_str(), GetLastError());
             return false;
         }
-        const auto getApi = reinterpret_cast<Pcsx2GsGetApiFn>(GetProcAddress(module, "pcsx2gs_get_api"));
-        g_api = getApi ? getApi(PCSX2GS_API_VERSION) : nullptr;
-        g_setAspect = reinterpret_cast<void(__cdecl *)(uint32_t)>(GetProcAddress(module, "pcsx2gs_set_aspect"));
-        if (!g_api)
+        const auto symbol = [module](const char *name) { return reinterpret_cast<void *>(GetProcAddress(module, name)); };
+#else
+        const std::filesystem::path dll = exeDirectory() / "libpcsx2gs.so";
+        void *module = dlopen(dll.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!module)
         {
-            std::fprintf(stderr, "[gs] pcsx2gs.dll has no matching pcsx2gs_get_api (version %u); using the built-in GS\n",
-                         PCSX2GS_API_VERSION);
+            std::fprintf(stderr, "[gs] PS2X_GS_RENDERER=pcsx2 but %s did not load (%s); using the built-in GS\n",
+                         dll.string().c_str(), dlerror());
             return false;
         }
-        std::fprintf(stderr, "[gs] renderer: PCSX2 GS (pcsx2gs.dll)\n");
+        const auto symbol = [module](const char *name) { return dlsym(module, name); };
+#endif
+        const auto getApi = reinterpret_cast<Pcsx2GsGetApiFn>(symbol("pcsx2gs_get_api"));
+        g_api = getApi ? getApi(PCSX2GS_API_VERSION) : nullptr;
+        g_setAspect = reinterpret_cast<void(PS2X_PCSX2GS_CALL *)(uint32_t)>(symbol("pcsx2gs_set_aspect"));
+        if (!g_api)
+        {
+            std::fprintf(stderr, "[gs] %s has no matching pcsx2gs_get_api (version %u); using the built-in GS\n",
+                         dll.filename().string().c_str(), PCSX2GS_API_VERSION);
+            return false;
+        }
+        std::fprintf(stderr, "[gs] renderer: PCSX2 GS (%s)\n", dll.filename().string().c_str());
         return true;
     }();
     return requested;
@@ -211,6 +258,7 @@ void GSPcsx2Backend::AttachHostWindow(void *parentHwnd)
 {
     if (!Requested() || !parentHwnd || g_child)
         return;
+#if defined(_WIN32)
     g_parent = static_cast<HWND>(parentHwnd);
     // The game window must not paint over its child (GLFW already sets WS_CLIPCHILDREN; made sure here).
     SetWindowLongPtrW(g_parent, GWL_STYLE, GetWindowLongPtrW(g_parent, GWL_STYLE) | WS_CLIPCHILDREN);
@@ -232,26 +280,67 @@ void GSPcsx2Backend::AttachHostWindow(void *parentHwnd)
     }
     g_clientWidth.store(width);
     g_clientHeight.store(height);
+#else
+    // parentHwnd: raylib's GLFWwindow*. The child selects no input, so the pointer events go on to the game window (X11
+    // propagates them to the first ancestor that selected them), and the keyboard focus stays on the game window.
+    g_display = XOpenDisplay(nullptr);
+    if (!g_display)
+    {
+        std::fprintf(stderr, "[gs] PCSX2 GS: cannot open the X11 display\n");
+        return;
+    }
+    g_parent = static_cast<Window>(glfwGetX11Window(parentHwnd));
+    if (!g_parent)
+    {
+        std::fprintf(stderr, "[gs] PCSX2 GS: the game window is not an X11 window\n");
+        return;
+    }
+    uint32_t width = 1u, height = 1u;
+    parentSize(width, height);
+    XSetWindowAttributes attributes{};
+    attributes.background_pixel = BlackPixel(g_display, DefaultScreen(g_display));
+    g_child = XCreateWindow(g_display, g_parent, 0, 0, width, height, 0, CopyFromParent, InputOutput, CopyFromParent,
+                            CWBackPixel, &attributes);
+    if (!g_child)
+    {
+        std::fprintf(stderr, "[gs] PCSX2 GS: child window creation failed\n");
+        return;
+    }
+    XMapWindow(g_display, g_child);
+    XSync(g_display, False); // the window exists before the GS thread makes a Vulkan surface for it
+    g_clientWidth.store(width);
+    g_clientHeight.store(height);
+#endif
 }
 
 void GSPcsx2Backend::HostTick()
 {
     if (!g_child)
         return;
+#if defined(_WIN32)
     RECT rect{};
     GetClientRect(g_parent, &rect);
     const uint32_t width = static_cast<uint32_t>(std::max<LONG>(1, rect.right - rect.left));
     const uint32_t height = static_cast<uint32_t>(std::max<LONG>(1, rect.bottom - rect.top));
+#else
+    uint32_t width = 1u, height = 1u;
+    parentSize(width, height);
+#endif
     if (width == g_clientWidth.load(std::memory_order_relaxed) && height == g_clientHeight.load(std::memory_order_relaxed))
         return;
+#if defined(_WIN32)
     SetWindowPos(g_child, nullptr, 0, 0, static_cast<int>(width), static_cast<int>(height), SWP_NOZORDER | SWP_NOACTIVATE);
+#else
+    XResizeWindow(g_display, g_child, width, height);
+    XFlush(g_display);
+#endif
     g_clientWidth.store(width, std::memory_order_relaxed);
     g_clientHeight.store(height, std::memory_order_relaxed);
 }
 
 bool GSPcsx2Backend::Active()
 {
-    return g_child != nullptr;
+    return g_child != decltype(g_child){};
 }
 
 void GSPcsx2Backend::SetOsd(const char *top, uint32_t topRgba, float topAlpha, const char *bottom)
@@ -287,7 +376,15 @@ void GSPcsx2Backend::SetHostUiVisible(bool visible)
     if (!g_child || g_hostUiVisible == visible)
         return;
     g_hostUiVisible = visible;
+#if defined(_WIN32)
     ShowWindow(g_child, visible ? SW_HIDE : SW_SHOWNA);
+#else
+    if (visible)
+        XUnmapWindow(g_display, g_child);
+    else
+        XMapWindow(g_display, g_child);
+    XFlush(g_display);
+#endif
 }
 
 bool GSPcsx2Backend::HostUiVisible()
@@ -320,13 +417,21 @@ bool GSPcsx2Backend::EnsureOpen()
     m_width = g_clientWidth.load();
     m_height = g_clientHeight.load();
     Pcsx2GsOpenParams params{};
-    params.hwnd = g_child;
+    params.hwnd = reinterpret_cast<void *>(g_child);
     params.width = m_width;
     params.height = m_height;
     params.scale = static_cast<float>(std::clamp(envInt("PS2X_GS_SCALE", 1), 1, 8));
     params.resources = resources.c_str();
     params.cache = cache.c_str();
-    params.vsync = static_cast<uint32_t>(std::clamp(envInt("PS2X_PCSX2_VSYNC", 2), 0, 2)); // mailbox: no tearing, no wait
+#if defined(_WIN32)
+    constexpr int kDefaultVsync = 2; // mailbox: no tearing, no wait
+#else
+    // Linux: present without waiting. NVIDIA offers no mailbox for an X11 window under XWayland, so PCSX2 fell back to
+    // FIFO, which made the GS thread wait for the compositor: a 4-fighter fight at ~52 frames/s (minimum 30) instead of
+    // 59.7 (docs/LINUX.md). The desktop compositor shows the latest image, as mailbox would.
+    constexpr int kDefaultVsync = 0;
+#endif
+    params.vsync = static_cast<uint32_t>(std::clamp(envInt("PS2X_PCSX2_VSYNC", kDefaultVsync), 0, 2));
     params.stretch = envInt("PS2X_PCSX2_STRETCH", 0) != 0 ? 1u : 0u;
     // Image options (pcsx2gs_api.h): PS2X_PCSX2_<KEY> -> key=value. FXAA is on unless PS2X_PCSX2_FXAA=0.
     static constexpr struct

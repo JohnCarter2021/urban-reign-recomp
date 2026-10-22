@@ -29,6 +29,13 @@
 #endif
 #include <windows.h>
 #pragma comment(lib, "Synchronization.lib") // WaitOnAddress / WakeByAddressSingle
+#else
+#include <climits>
+#include <ctime>
+#include <linux/futex.h>
+#include <pthread.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #endif
 
 #if defined(_M_X64) || defined(__x86_64__)
@@ -51,9 +58,10 @@ namespace ps2x::iop
             return v && *v ? static_cast<uint32_t>(std::strtoul(v, nullptr, 10)) : fallback;
         }
 
-        // How the EE and the IOP worker wait for each other. Default (Windows): spin a few microseconds with pause,
-        // then sleep in WaitOnAddress; the other side calls WakeByAddressSingle only when it sees a sleeper.
-        // PS2X_IOP_SPIN=1: the old behaviour (the worker spins up to 2 ms between batches, join spins forever).
+        // How the EE and the IOP worker wait for each other. Default: spin a few microseconds with pause, then sleep on
+        // the busy flag's address (WaitOnAddress on Windows, a futex on Linux); the other side wakes it only when it
+        // sees a sleeper. PS2X_IOP_SPIN=1: the old behaviour (the worker spins up to 2 ms between batches, join spins
+        // forever).
         struct IopWaitPolicy
         {
             bool spinOnly = true;
@@ -65,18 +73,48 @@ namespace ps2x::iop
         {
             static const IopWaitPolicy policy = [] {
                 IopWaitPolicy p;
-#if defined(_WIN32)
                 const char *spin = std::getenv("PS2X_IOP_SPIN");
                 p.spinOnly = spin && *spin == '1';
-#endif
                 // 5 us (was 20): at ~17k batches/s the 20 us spin was ~6-8 points of a core with no FPS effect (PROGRESS §75).
                 p.workerSpinUs = envMicros("PS2X_IOP_WORKER_SPIN_US", 5u);
                 p.joinSpinUs = envMicros("PS2X_IOP_JOIN_SPIN_US", 200u);
                 std::fprintf(stderr, "[iop-thread] wait policy: %s (worker spin %u us, join spin %u us)\n",
-                             p.spinOnly ? "spin (PS2X_IOP_SPIN=1)" : "spin then WaitOnAddress", p.workerSpinUs, p.joinSpinUs);
+                             p.spinOnly ? "spin (PS2X_IOP_SPIN=1)" : "spin then sleep on the address", p.workerSpinUs, p.joinSpinUs);
                 return p;
             }();
             return policy;
+        }
+
+        // The batch flag the EE and the worker sleep on. A futex is a 32-bit word, so on Linux the flag is one (0/1).
+#if defined(_WIN32)
+        using BusyFlag = std::atomic<bool>;
+#else
+        using BusyFlag = std::atomic<uint32_t>;
+        static_assert(sizeof(BusyFlag) == sizeof(uint32_t), "a futex word");
+#endif
+
+        // Sleeps while the flag still holds `value` (re-checked by the system, so a wake in between is not lost), at most
+        // timeoutMs: the timeout is only a safety net.
+        void sleepWhileFlag(BusyFlag &flag, bool value, uint32_t timeoutMs)
+        {
+#if defined(_WIN32)
+            WaitOnAddress(&flag, &value, sizeof(value), timeoutMs);
+#else
+            const timespec timeout{static_cast<time_t>(timeoutMs / 1000u), static_cast<long>(timeoutMs % 1000u) * 1000000L};
+            syscall(SYS_futex, reinterpret_cast<uint32_t *>(&flag), FUTEX_WAIT_PRIVATE, value ? 1u : 0u, &timeout, nullptr, 0);
+#endif
+        }
+
+        void wakeFlag(BusyFlag &flag, bool all)
+        {
+#if defined(_WIN32)
+            if (all)
+                WakeByAddressAll(&flag);
+            else
+                WakeByAddressSingle(&flag);
+#else
+            syscall(SYS_futex, reinterpret_cast<uint32_t *>(&flag), FUTEX_WAKE_PRIVATE, all ? INT_MAX : 1, nullptr, nullptr, 0);
+#endif
         }
 
         // Host proxy for the threaded IOP. While a batch runs on the worker, the effects that land on the EE side -
@@ -290,9 +328,7 @@ namespace ps2x::iop
                     stopWorker.store(true, std::memory_order_release);
                 }
                 wakeCv.notify_one();
-#if defined(_WIN32)
-                WakeByAddressAll(const_cast<std::atomic<bool> *>(&busy));
-#endif
+                wakeFlag(busy, true);
                 worker.join();
             }
         }
@@ -326,7 +362,6 @@ namespace ps2x::iop
             pendingEeCycles = 0u;
             if (!worker.joinable())
                 worker = std::thread([this] { workerLoop(); });
-#if defined(_WIN32)
             if (!iopWaitPolicy().spinOnly)
             {
                 // Store busy, then look for a sleeper (both seq_cst, paired with the worker's store of workerSleeping
@@ -334,12 +369,11 @@ namespace ps2x::iop
                 busy.store(true, std::memory_order_seq_cst);
                 if (workerSleeping.load(std::memory_order_seq_cst))
                 {
-                    WakeByAddressSingle(&busy);
+                    wakeFlag(busy, false);
                     workerWakes.fetch_add(1u, std::memory_order_relaxed);
                 }
                 return;
             }
-#endif
             busy.store(true, std::memory_order_release);
             if (workerSleeping.load(std::memory_order_acquire))
             {
@@ -356,11 +390,9 @@ namespace ps2x::iop
             if (busy.load(std::memory_order_acquire))
             {
                 const auto waitStart = std::chrono::steady_clock::now();
-#if defined(_WIN32)
                 if (!iopWaitPolicy().spinOnly)
                     waitBatchDone(waitStart);
                 else
-#endif
                     while (busy.load(std::memory_order_acquire))
                         PS2X_IOP_SPIN_PAUSE();
                 const double waited = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - waitStart).count();
@@ -377,8 +409,9 @@ namespace ps2x::iop
             t_onIopWorker = true;
 #if defined(_WIN32)
             SetThreadDescription(GetCurrentThread(), L"IOPThread"); // shows up in profilers (URBAN_NATIVE_PROFILE, F6)
+#else
+            pthread_setname_np(pthread_self(), "IOPThread");
 #endif
-#if defined(_WIN32)
             if (!iopWaitPolicy().spinOnly)
             {
                 for (;;)
@@ -389,10 +422,9 @@ namespace ps2x::iop
                     // Pairs with join(): either the EE sees busy == false, or we see it waiting and wake it.
                     busy.store(false, std::memory_order_seq_cst);
                     if (eeWaiting.load(std::memory_order_seq_cst))
-                        WakeByAddressSingle(&busy);
+                        wakeFlag(busy, false);
                 }
             }
-#endif
             for (;;)
             {
                 // Spin briefly (batches arrive every few tens of microseconds while the game runs), then sleep.
@@ -450,7 +482,6 @@ namespace ps2x::iop
             }
         }
 
-#if defined(_WIN32)
         // Worker side: spin PS2X_IOP_WORKER_SPIN_US for the next batch, then sleep on busy until the EE posts one.
         // Returns false when the worker must stop.
         bool waitForBatch()
@@ -465,11 +496,10 @@ namespace ps2x::iop
                 if ((++spins & 63u) != 0u || std::chrono::steady_clock::now() < spinUntil)
                     continue;
                 workerSleeping.store(true, std::memory_order_seq_cst);
-                bool notBusy = false;
-                // WaitOnAddress re-checks the value, so a wake between this load and the call is not lost. The timeout
-                // is only a safety net (shutdown also wakes us).
+                // The sleep re-checks the value, so a wake between this load and the call is not lost. The timeout is
+                // only a safety net (shutdown also wakes us).
                 if (!busy.load(std::memory_order_seq_cst) && !stopWorker.load(std::memory_order_acquire))
-                    WaitOnAddress(&busy, &notBusy, sizeof(notBusy), 50u);
+                    sleepWhileFlag(busy, false, 50u);
                 workerSleeping.store(false, std::memory_order_relaxed);
             }
             return true;
@@ -486,16 +516,14 @@ namespace ps2x::iop
                 if ((++spins & 63u) != 0u || std::chrono::steady_clock::now() < spinUntil)
                     continue;
                 eeWaiting.store(true, std::memory_order_seq_cst);
-                bool isBusy = true;
                 if (busy.load(std::memory_order_seq_cst))
                 {
                     joinSleeps.fetch_add(1u, std::memory_order_relaxed);
-                    WaitOnAddress(&busy, &isBusy, sizeof(isBusy), 50u);
+                    sleepWhileFlag(busy, true, 50u);
                 }
                 eeWaiting.store(false, std::memory_order_relaxed);
             }
         }
-#endif
 
         static constexpr uint64_t kAsyncBatchEeCycles = 8192u;
         static constexpr uint64_t kMaxAsyncLagEeCycles = 512u * kAsyncBatchEeCycles;
@@ -506,7 +534,7 @@ namespace ps2x::iop
         uint64_t eeCycleBudget = 0u;
         uint64_t postedEeCycles = 0u;
         std::thread worker;
-        std::atomic<bool> busy{false};
+        BusyFlag busy{false};
         std::atomic<bool> stopWorker{false};
         std::atomic<bool> workerSleeping{false};
         std::atomic<bool> eeWaiting{false};

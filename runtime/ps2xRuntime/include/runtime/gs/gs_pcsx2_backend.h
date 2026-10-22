@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 
-// PCSX2's GS (hardware renderer, pcsx2gs.dll) as the raster back end (docs/GS_PCSX2.md, phase 2). It takes the raw GIF
+// PCSX2's GS (hardware renderer, pcsx2gs.dll; libpcsx2gs.so on Vulkan on Linux) as the raster back end (docs/GS_PCSX2.md, phase 2). It takes the raw GIF
 // stream and the vsyncs, and presents into a child window over the game window on its own (no PresentationFrame).
 // Runs inside GSThreadedBackend: every call below happens on the GS thread, except the static ones.
 // The default renderer; PS2X_GS_RENDERER=nativo (config.ini [Video] Renderizador=nativo) keeps the port's GS, and
@@ -15,9 +15,10 @@
 class GSPcsx2Backend final : public GSRasterBackend
 {
 public:
-    // Main thread: true when PS2X_GS_RENDERER asks for it and pcsx2gs.dll loads.
+    // Main thread: true when PS2X_GS_RENDERER asks for it and pcsx2gs.dll (libpcsx2gs.so) loads.
     static bool Requested();
-    // Main thread, after the game window exists: creates the child window the GS renders into.
+    // Main thread, after the game window exists: creates the child window the GS renders into. parentHwnd is raylib's
+    // GetWindowHandle(): the HWND on Windows, the GLFWwindow* on Linux (an X11 child window then).
     static void AttachHostWindow(void *parentHwnd);
     // Main thread, once per host frame: keeps the child window over the parent's client area.
     static void HostTick();

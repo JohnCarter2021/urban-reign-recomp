@@ -615,6 +615,11 @@ if(WIN32)
 elseif(NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
     find_package(Threads REQUIRED)
     target_link_libraries(ps2_runtime PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # gs_pcsx2_backend.cpp: the X11 child window PCSX2's GS renders into.
+        find_package(X11 REQUIRED)
+        target_link_libraries(ps2_runtime PRIVATE X11::X11)
+    endif()
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")

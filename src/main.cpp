@@ -1303,9 +1303,10 @@ int main(int argc, char *argv[])
 #if defined(_WIN32)
     ps2x::asyncvif::setDefaultEnabled(true);
 #else
-    // Linux (docs/LINUX.md): the port's GPU GS is WGL only, so without PCSX2's GS the software GS draws. With it MTVU
-    // stopped in the intro movie (the frame-done SIGNAL never came, game thread at 0x1298a0), so until MTVU is validated
-    // with PCSX2's GS on Vulkan it is only on by default together with that renderer. PS2X_MTVU=1/0 still decides.
+    // Linux (docs/LINUX.md): the port's GPU GS is WGL only, so without PCSX2's GS (libpcsx2gs.so) the software GS draws.
+    // MTVU runs as on Windows with PCSX2's GS on Vulkan (fights at 60); with the software GS it stopped in the intro
+    // movie (the frame-done SIGNAL never came, game thread at 0x1298a0), so it is on by default only with PCSX2's GS.
+    // PS2X_MTVU=1/0 still decides.
     const bool pcsx2Gs = GSPcsx2Backend::Requested();
     GSThreadedBackend::SetGpuByDefault(false);
     ps2x::asyncvif::setDefaultEnabled(pcsx2Gs);

@@ -11,7 +11,7 @@ Branch `feat/linux-support`. Goal: `urban` built natively on Linux with Clang, r
 | 1 | Portable CMake: Clang/GCC flags, `build/linux`, SDL3 and raylib (X11) on Linux; the runtime and the generated code compile | done |
 | 2 | Host code: `main.cpp` (game defaults outside `_WIN32`, stack, crash report), mod loader with `dlopen`; boots to the menus with the software GS | done |
 | 3 | PCSX2's GS on Vulkan (`libpcsx2gs.so`): Vulkan renderer, `common/Linux`, shaders, PNG through libpng, `Bridge.cpp`; device test | done |
-| 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it | |
+| 4 | Runtime ↔ GS window: `dlopen` of `libpcsx2gs.so`, X11 child window over the game window; MTVU validated with it; fights at 60 | done |
 | 5 | `build.py` on Linux | |
 | 6 | Mods (CoopTool, ExampleMod) as `.so` | |
 | 7 | Validation: boot, menus, fights, save states, HD textures, audio, controllers | |
@@ -77,26 +77,26 @@ What the CMake files do on Linux (phase 1):
   (`sigsetjmp`); any other fault goes on to the crash report.
 - **Thread names** (`ThreadNaming.h`): at most 15 characters and NUL-terminated, as `pthread_setname_np` needs.
 
-### Renderer until phase 3
+### Renderer without PCSX2's GS
 
 The port's own GPU GS shares OpenGL textures between contexts through WGL only (`gs_gl.cpp`): on Linux it does not
-start and nothing was drawn. Until PCSX2's GS on Vulkan is there, Linux defaults to the **software GS**
-(`PS2X_GS_GPU=0`): correct image, but 2-3 images per second on screen and ~64% game speed. A stand-in only.
+start and nothing was drawn. When `libpcsx2gs.so` is missing (or `[Video] Renderer=native`), Linux falls back to the
+**software GS** (`PS2X_GS_GPU=0`): correct image, but 2-3 images per second on screen and ~64% game speed; the window
+then also reads the keyboard only that often (a quick tap can be missed). A stand-in only.
 
-### Open issue: MTVU with the software GS
+### MTVU with the software GS
 
 With MTVU on (the Windows default), the intro movie stopped after its first image: the game thread waits at
 `0x1298a0` for the frame-done flag that the GS interrupt handler sets on a SIGNAL, and no GS interrupt comes any more
 (`PS2X_PACING_STATS=1`: `gsWake=0 gsAtEntry=0`; `PS2X_GS_SIGNAL_LOG=2` shows the last SIGNALs being delivered and
 cleared, then nothing). The VU and GIF threads are idle, nobody is stuck in a lock (gdb). It is the SIGNAL/SIGLBLID
-area `gs_handler_exclusive` already fixed on Windows, where MTVU only ever ran with the GPU or PCSX2 GS; whether the
-software GS's timing or Linux causes it is open. So on Linux MTVU is on by default only together with PCSX2's GS
-(`PS2X_MTVU=1/0` still decides); phase 4 checks it with the Vulkan renderer.
+area `gs_handler_exclusive` already fixed on Windows, where MTVU only ever ran with the GPU or PCSX2 GS. With PCSX2's GS
+on Vulkan (phase 4) MTVU runs as on Windows (intro, menus, fights at 60, no `vblank waited`): it is the software GS's
+timing, not Linux. So on Linux MTVU is on by default together with PCSX2's GS and off with the software GS
+(`PS2X_MTVU=1/0` still decides).
 
 ### Later (performance)
 
-- The IOP thread waits with `WaitOnAddress` on Windows; elsewhere it uses the older spin + condition variable policy
-  (more CPU, same behaviour). A futex/`std::atomic::wait` version would match Windows.
 - `host_vsync.cpp` (the emulated vblank locked to the monitor's, D3DKMT) has no Linux version: the clock runs free.
 - Thread priorities (`ThreadPriority.h`) are not raised on Linux (it needs `CAP_SYS_NICE`).
 
@@ -127,3 +127,32 @@ on Linux `Pcsx2GsOpenParams::hwnd` is the X11 window (XID) to render into.
 `libpcsx2gs.so` through the C interface as urban will, and presents test/GSTest.cpp's scene (blue background, red and
 green sprites). GTX 1660 SUPER, driver 610: correct image at 2x (1280x896), 75 presents a second with FIFO vsync
 (the monitor's rate).
+
+## PCSX2's GS in the game (phase 4)
+
+`gs_pcsx2_backend.cpp` on Linux: `libpcsx2gs.so` next to `urban` is loaded with `dlopen` (`[Video] Renderer=pcsx2`, the
+default), and the GS renders into an **X11 child window** of the game window, as the Win32 child window on Windows:
+
+- raylib's `GetWindowHandle()` is the `GLFWwindow*` on Linux; `glfwGetX11Window` (raylib's GLFW is built with X11) gives
+  the parent. The child is created on the main thread's own X11 connection, covers the client area (resized in
+  `HostTick`, hidden while the F1 debugger is open) and selects no input: pointer events go on to the game window,
+  the keyboard focus stays there. The library makes its Vulkan surface on its own connection, on the GS thread.
+- **Presentation**: `PS2X_PCSX2_VSYNC` defaults to 0 (immediate) on Linux. NVIDIA offers no mailbox for an X11
+  window under XWayland, so the Windows default (mailbox) became FIFO: the GS thread waited for the compositor and a
+  4-fighter fight ran at ~52 frames/s (minimum 30). Immediate gives 59.9; in a composited window the desktop shows the
+  latest image, as mailbox would. `PS2X_PCSX2_VSYNC=1` (FIFO) / `2` (mailbox) in `config.ini [Runtime]` still apply.
+- **IOP thread**: it now sleeps on a futex where Windows uses `WaitOnAddress` (`iop_subsystem.cpp`; the busy flag is a
+  32-bit word on Linux). The old spin policy, which Linux used before, cost a whole core (31% of all samples in
+  `perf`) and is still there with `PS2X_IOP_SPIN=1`. The thread is named `IOPThread`.
+
+Measured on the repository's save states (`bench/states`, saved on Windows; they load on Linux), window 640x480, 1x,
+15 s after the load (Ryzen 5 3600, GTX 1660 SUPER, driver 610):
+
+| state | frames/s (median, min) | game thread | VU | IOP | GS |
+|---|---|---|---|---|---|
+| fight1v1 | 59.9 (60, 59) | 43% | 23% | 26% | 18% |
+| fight4_heavy | 59.9 (60, 59) | 46% | 28% | 26% | 20% |
+| fight8_heli | 59.1 (60, 57) | 67% | 53% | 32% | 27% |
+| select4 | 59.9 (60, 59) | 37% | 21% | 22% | 19% |
+
+On Windows `fight4_heavy` runs at 60.0 with the game thread at 58.5% (docs/PROGRESS.md).
