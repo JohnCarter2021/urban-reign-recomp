@@ -21,3 +21,5 @@ imgui.ini
 # Local backups of the READMEs (2026-10-12), not published.
 /README.backup.md
 /README.pt-BR.backup.md
+# Local notes for Claude Code sessions.
+/CLAUDE.md
