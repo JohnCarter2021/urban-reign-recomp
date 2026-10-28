@@ -3833,6 +3833,9 @@ bool ps2xGsSignalQueuePending()
     std::lock_guard<std::mutex> lock(g_gsSignalMutex);
     return !g_gsSignalQueue.empty();
 }
+size_t ps2xGsSignalQueueDepth() { std::lock_guard<std::mutex> lock(g_gsSignalMutex); return g_gsSignalQueue.size(); }
+bool ps2xGsHandlerBusy() { return g_gsHandlerBusy.load(std::memory_order_acquire); }
+void ps2xGsReleaseStuckSignal(GSRegisters &gs) { if (ps2xGsSignalQueuePending()) releaseQueuedGsSignal(gs); }
 
 void ps2xGsResetSignalState()
 {
