@@ -1885,8 +1885,13 @@ uint32_t EeScheduler::pendingGsInterruptEvents() const noexcept
 }
 
 void EeScheduler::dispatchGsInterrupt()
-
-static uint64_t lastStuckCheckCycle = 0u; if (m_eeCycle - lastStuckCheckCycle >= 294912u) { lastStuckCheckCycle = m_eeCycle; ps2xGsReleaseStuckSignal(m_runtime().memory().gs());{
+{
+    static uint64_t lastStuckCheckCycle = 0u;
+    if (m_eeCycle - lastStuckCheckCycle >= 294912u)
+    {
+        lastStuckCheckCycle = m_eeCycle;
+        ps2xGsReleaseStuckSignal(m_runtime.memory().gs());
+    }
     const uint32_t pending = pendingGsInterruptEvents();
     uint32_t raised = pending & ~m_gsInterruptLatched;
     m_gsInterruptLatched = pending;
