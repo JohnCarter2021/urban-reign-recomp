@@ -12,6 +12,7 @@ void ps2xRaiseIntcStat(uint32_t bits) noexcept;
 uint32_t ps2xGsSignalSerial() noexcept;
 bool ps2xIpuActiveRecently() noexcept; // ps2_memory.cpp
 uint32_t ps2xGsFinishSerial() noexcept;
+void ps2xGsReleaseStuckSignal(GSRegisters &gs);
 const std::atomic<uint32_t> *ps2xGsSignalSerialAddress() noexcept;
 const std::atomic<uint32_t> *ps2xGsFinishSerialAddress() noexcept;
 // host_vsync.cpp: the host display's last vblank and refresh period.
@@ -1884,7 +1885,8 @@ uint32_t EeScheduler::pendingGsInterruptEvents() const noexcept
 }
 
 void EeScheduler::dispatchGsInterrupt()
-{
+
+static uint64_t lastStuckCheckCycle = 0u; if (m_eeCycle - lastStuckCheckCycle >= 294912u) { lastStuckCheckCycle = m_eeCycle; ps2xGsReleaseStuckSignal(m_runtime().memory().gs());{
     const uint32_t pending = pendingGsInterruptEvents();
     uint32_t raised = pending & ~m_gsInterruptLatched;
     m_gsInterruptLatched = pending;
