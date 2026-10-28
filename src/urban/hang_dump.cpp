@@ -1,6 +1,10 @@
 #include "urban/hang_dump.h"
 #include "urban/call_profile.h"
 #include "urban/hle_bindings.h"
+size_t ps2xGsSignalQueueDepth();
+bool ps2xGsHandlerBusy();
+uint32_t ps2xGsSignalSerial() noexcept;
+uint32_t ps2xGsFinishSerial() noexcept;
 
 #include "ps2_runtime.h"
 #include "runtime/ee_scheduler.h"
@@ -110,6 +114,7 @@ namespace urban::hangdump
             std::fprintf(stderr, "[hang-dump]   GS csr=0x%llx imr=0x%llx\n",
                          static_cast<unsigned long long>(runtime->memory().gs().csr.load()),
                          static_cast<unsigned long long>(runtime->memory().gs().imr));
+              std::fprintf(stderr, "[hang-dump]   GS siglblid=0x%llx signalQueue=%zu handlerBusy=%d signalSerial=%u finishSerial=%u\n", static_cast<unsigned long long>(runtime->memory().gs().siglblid), ps2xGsSignalQueueDepth(), ps2xGsHandlerBusy(), ps2xGsSignalSerial(), ps2xGsFinishSerial());
             {
                 const GSRegisters &gs = runtime->memory().gs();
                 std::fprintf(stderr, "[hang-dump]   GS pmode=0x%llx smode2=0x%llx dispfb1=0x%llx display1=0x%llx dispfb2=0x%llx display2=0x%llx bgcolor=0x%llx\n",
